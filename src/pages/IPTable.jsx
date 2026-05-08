@@ -26,8 +26,8 @@ const EXTRA_COLS = {
 };
 
 function sortIP(ip="") {
-  const p = ip.split(".").map(Number);
-  return p[0]*16777216+p[1]*65536+p[2]*256+(p[3]||0);
+  return (ip || "").split(".").map(n => parseInt(n, 10) || 0)
+    .reduce((acc, val) => acc * 256 + val, 0);
 }
 
 function detectarBlocos(registros) {
