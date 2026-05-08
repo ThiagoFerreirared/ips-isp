@@ -26,8 +26,7 @@ const toKey = c => c.replace(/[\/\s]/g, "_").toUpperCase();
 async function deletarColecao(cidadeKey) {
   const colRef = collection(db, "ips_" + cidadeKey);
   const snap = await getDocs(colRef);
-  const deletes = snap.docs.map(d => deleteDoc(doc(db, "ips_" + cidadeKey, d.id)));
-  await Promise.all(deletes);
+  await Promise.all(snap.docs.map(d => deleteDoc(doc(db, "ips_" + cidadeKey, d.id))));
 }
 
 function Main() {
@@ -35,6 +34,7 @@ function Main() {
   const [cidades, setCidades] = useState(DEFAULT_CIDADES);
   const [cidade, setCidade] = useState("SANTAREM");
   const [loadingCidades, setLoadingCidades] = useState(true);
+  const [hoveredTab, setHoveredTab] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -56,25 +56,13 @@ function Main() {
     const nome = prompt("Nome da nova aba (ex: NOVO_SITE):");
     if (!nome) return;
     const key = nome.trim().toUpperCase().replace(/\s+/g, "_");
-    if (cidades.includes(key)) {
-      alert("Já existe!");
-      return;
-    }
+    if (cidades.includes(key)) { alert("Já existe!"); return; }
     setCidades(c => [...c, key]);
     setCidade(key);
   }
 
-  async function deletarCidade() {
-    const alvo = prompt("Digite exatamente o nome da cidade/aba para deletar:");
-    if (!alvo) return;
-    const key = alvo.trim().toUpperCase().replace(/\s+/g, "_");
-    if (!cidades.includes(key)) {
-      alert("Cidade não encontrada!");
-      return;
-    }
-    if (!confirm(`Tem certeza que deseja deletar a cidade ${key}?\n\nIsso vai remover a aba E TODOS OS IPs cadastrados nela do Firebase. Essa ação não pode ser desfeita.`)) {
-      return;
-    }
+  async function deletarCidade(key) {
+    if (!confirm(`Deletar a cidade ${key}?\n\nIsso vai remover a aba e TODOS os IPs dela do Firebase. Não pode ser desfeito.`)) return;
     try {
       await deletarColecao(toKey(key));
       setCidades(c => c.filter(x => x !== key));
@@ -83,7 +71,7 @@ function Main() {
         setCidade(restante || DEFAULT_CIDADES[0] || "");
       }
     } catch (err) {
-      alert("Erro ao deletar os dados do Firebase: " + err.message);
+      alert("Erro ao deletar: " + err.message);
     }
   }
 
@@ -97,27 +85,55 @@ function Main() {
         <div className="header-right">
           <GlobalSearch onSelect={(c) => setCidade(c)} />
           <span className="user-info">👤 {user.email}</span>
-          <button className="btn btn-cancel btn-sm" onClick={logout}>
-            Sair
-          </button>
+          <button className="btn btn-cancel btn-sm" onClick={logout}>Sair</button>
         </div>
       </div>
 
       <div className="tabs">
         {cidades.map((c) => (
-          <button
+          <div
             key={c}
-            className={"tab-btn" + (cidade === c ? " active" : "")}
-            onClick={() => setCidade(c)}
+            style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+            onMouseEnter={() => setHoveredTab(c)}
+            onMouseLeave={() => setHoveredTab(null)}
           >
-            {c.replace(/_/g, " ")}
-          </button>
+            <button
+              className={"tab-btn" + (cidade === c ? " active" : "")}
+              onClick={() => setCidade(c)}
+              style={{ paddingRight: hoveredTab === c ? "28px" : undefined }}
+            >
+              {c.replace(/_/g, " ")}
+            </button>
+
+            {hoveredTab === c && (
+              <button
+                onClick={(e) => { e.stopPropagation(); deletarCidade(c); }}
+                title={`Deletar ${c}`}
+                style={{
+                  position: "absolute",
+                  right: "4px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "11px",
+                  color: "#ef4444",
+                  lineHeight: 1,
+                  padding: "2px 3px",
+                  borderRadius: "3px",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
         ))}
+
         <button className="tab-add" onClick={addCidade}>
           + Nova cidade
-        </button>
-        <button className="tab-add" onClick={deletarCidade}>
-          🗑️ Deletar cidade
         </button>
       </div>
 
