@@ -20,9 +20,9 @@ const DEFAULT_CIDADES = [
 ];
 
 function Main() {
-  const { user, logout } = useAuth();
-  const [cidades, setCidades] = useState(DEFAULT_CIDADES);
-  const [cidade, setCidade] = useState("SANTAREM");
+  const [cidades, setCidades] = useState(() => {
+  const salvo = localStorage.getItem("cidades_isp");
+  return salvo ? JSON.parse(salvo) : DEFAULT_CIDADES;
 
   if (!user) return <Login />;
 
