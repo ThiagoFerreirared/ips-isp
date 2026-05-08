@@ -1,18 +1,38 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { collection, addDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
+import * as XLSX from "xlsx";
 
 const toKey = c => c.replace(/[\/\s]/g,"_").toUpperCase();
 
 export default function BulkImport({ cidade, onClose, onDone }) {
   const [texto, setTexto] = useState("");
   const [loading, setLoading] = useState(false);
+  const fileRef = useRef();
 
   const linhas = texto.split("\n").map(l => l.trim()).filter(l => l);
   const preview = linhas.map(l => {
     const parts = l.split(/[,;\t]+/);
     return { ip: parts[0]?.trim() || "", login: parts[1]?.trim() || "VAGO", data: parts[2]?.trim() || "" };
   }).filter(r => r.ip);
+
+  function handleXLSX(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      const workbook = XLSX.read(evt.target.result, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+      const linhasGeradas = rows
+        .slice(1)
+        .filter(r => r[0])
+        .map(r => [r[0], r[1] || "VAGO", r[2] || ""].join("\t"));
+      setTexto(linhasGeradas.join("\n"));
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  }
 
   async function importar() {
     if (!preview.length) return;
@@ -36,6 +56,26 @@ export default function BulkImport({ cidade, onClose, onDone }) {
           <code style={{color:"#7dd3fc"}}>IP</code> ou <code style={{color:"#7dd3fc"}}>IP, Login</code> ou <code style={{color:"#7dd3fc"}}>IP, Login, Data</code>
         </p>
 
+        <div style={{marginBottom:"12px"}}>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xls"
+            style={{display:"none"}}
+            onChange={handleXLSX}
+          />
+          <button
+            className="btn btn-cancel"
+            style={{display:"flex",alignItems:"center",gap:"6px",fontSize:".85rem"}}
+            onClick={() => fileRef.current.click()}
+          >
+            📂 Importar do Excel (.xlsx)
+          </button>
+          <span style={{fontSize:".75rem",color:"#64748b",marginTop:"4px",display:"block"}}>
+            A planilha deve ter as colunas: IP, Login, Data na primeira linha
+          </span>
+        </div>
+
         <div className="form-group">
           <textarea
             className="bulk-textarea"
@@ -53,7 +93,11 @@ export default function BulkImport({ cidade, onClose, onDone }) {
                 <span>{r.ip}</span> — {r.login} {r.data && `— ${r.data}`}
               </div>
             ))}
-            {preview.length > 20 && <div style={{color:"#64748b",fontSize:".75rem",marginTop:"6px"}}>...e mais {preview.length-20} registros</div>}
+            {preview.length > 20 && (
+              <div style={{color:"#64748b",fontSize:".75rem",marginTop:"6px"}}>
+                ...e mais {preview.length-20} registros
+              </div>
+            )}
           </div>
         )}
 
