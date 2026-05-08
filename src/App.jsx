@@ -8,17 +8,9 @@ import IPTable from "./pages/IPTable";
 import GlobalSearch from "./components/GlobalSearch";
 
 const DEFAULT_CIDADES = [
-  "SANTAREM",
-  "MANAUS",
-  "ITAITUBA",
-  "RUROPOLIS",
-  "ALTAMIRA_ALENQUER",
-  "ALENQUER",
-  "SAPEZAL_CJ",
-  "VILHENA",
-  "COMODORO",
-  "PRIVADO_BACKBONE",
-  "IPV6_WSP",
+  "SANTAREM","MANAUS","ITAITUBA","RUROPOLIS",
+  "ALTAMIRA_ALENQUER","ALENQUER","SAPEZAL_CJ","VILHENA",
+  "COMODORO","PRIVADO_BACKBONE","IPV6_WSP",
 ];
 
 const toKey = c => c.replace(/[\/\s]/g, "_").toUpperCase();
@@ -35,6 +27,7 @@ function Main() {
   const [cidade, setCidade] = useState("SANTAREM");
   const [loadingCidades, setLoadingCidades] = useState(true);
   const [hoveredTab, setHoveredTab] = useState(null);
+  const [dragIdx, setDragIdx] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -56,7 +49,10 @@ function Main() {
     const nome = prompt("Nome da nova aba (ex: NOVO_SITE):");
     if (!nome) return;
     const key = nome.trim().toUpperCase().replace(/\s+/g, "_");
-    if (cidades.includes(key)) { alert("Já existe!"); return; }
+    if (cidades.includes(key)) { 
+      alert("Já existe!"); 
+      return; 
+    }
     setCidades(c => [...c, key]);
     setCidade(key);
   }
@@ -75,6 +71,25 @@ function Main() {
     }
   }
 
+  function onDragStart(idx) {
+    setDragIdx(idx);
+  }
+
+  function onDragOver(e, idx) {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) return;
+
+    const nova = [...cidades];
+    const [moved] = nova.splice(dragIdx, 1);
+    nova.splice(idx, 0, moved);
+    setCidades(nova);
+    setDragIdx(idx);
+  }
+
+  function onDragEnd() {
+    setDragIdx(null);
+  }
+
   return (
     <div>
       <div className="app-header">
@@ -90,10 +105,20 @@ function Main() {
       </div>
 
       <div className="tabs">
-        {cidades.map((c) => (
+        {cidades.map((c, idx) => (
           <div
             key={c}
-            style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+            draggable
+            onDragStart={() => onDragStart(idx)}
+            onDragOver={(e) => onDragOver(e, idx)}
+            onDragEnd={onDragEnd}
+            style={{
+              position: "relative",
+              display: "inline-flex",
+              alignItems: "center",
+              opacity: dragIdx === idx ? 0.5 : 1,
+              cursor: "grab",
+            }}
             onMouseEnter={() => setHoveredTab(c)}
             onMouseLeave={() => setHoveredTab(null)}
           >
@@ -107,7 +132,10 @@ function Main() {
 
             {hoveredTab === c && (
               <button
-                onClick={(e) => { e.stopPropagation(); deletarCidade(c); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deletarCidade(c);
+                }}
                 title={`Deletar ${c}`}
                 style={{
                   position: "absolute",
