@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
 import { db } from "./firebase/config";
 import Login from "./pages/Login";
 import IPTable from "./pages/IPTable";
@@ -21,24 +21,29 @@ const DEFAULT_CIDADES = [
   "IPV6_WSP",
 ];
 
+const toKey = c => c.replace(/[\/\s]/g, "_").toUpperCase();
+
+async function deletarColecao(cidadeKey) {
+  const colRef = collection(db, "ips_" + cidadeKey);
+  const snap = await getDocs(colRef);
+  const deletes = snap.docs.map(d => deleteDoc(doc(db, "ips_" + cidadeKey, d.id)));
+  await Promise.all(deletes);
+}
+
 function Main() {
   const { user, logout } = useAuth();
   const [cidades, setCidades] = useState(DEFAULT_CIDADES);
   const [cidade, setCidade] = useState("SANTAREM");
   const [loadingCidades, setLoadingCidades] = useState(true);
 
-  // Carrega lista de cidades do Firebase ao abrir
   useEffect(() => {
     if (!user) return;
     getDoc(doc(db, "config", "cidades")).then(snap => {
-      if (snap.exists()) {
-        setCidades(snap.data().lista);
-      }
+      if (snap.exists()) setCidades(snap.data().lista);
       setLoadingCidades(false);
     }).catch(() => setLoadingCidades(false));
   }, [user]);
 
-  // Salva no Firebase toda vez que a lista mudar
   useEffect(() => {
     if (!user || loadingCidades) return;
     setDoc(doc(db, "config", "cidades"), { lista: cidades });
@@ -59,7 +64,7 @@ function Main() {
     setCidade(key);
   }
 
-  function deletarCidade() {
+  async function deletarCidade() {
     const alvo = prompt("Digite exatamente o nome da cidade/aba para deletar:");
     if (!alvo) return;
     const key = alvo.trim().toUpperCase().replace(/\s+/g, "_");
@@ -67,13 +72,18 @@ function Main() {
       alert("Cidade não encontrada!");
       return;
     }
-    if (!confirm(`Tem certeza que deseja deletar a cidade ${key}? Isso vai remover a aba do sistema.`)) {
+    if (!confirm(`Tem certeza que deseja deletar a cidade ${key}?\n\nIsso vai remover a aba E TODOS OS IPs cadastrados nela do Firebase. Essa ação não pode ser desfeita.`)) {
       return;
     }
-    setCidades(c => c.filter(x => x !== key));
-    if (cidade === key) {
-      const restante = cidades.find(x => x !== key);
-      setCidade(restante || DEFAULT_CIDADES[0] || "");
+    try {
+      await deletarColecao(toKey(key));
+      setCidades(c => c.filter(x => x !== key));
+      if (cidade === key) {
+        const restante = cidades.find(x => x !== key);
+        setCidade(restante || DEFAULT_CIDADES[0] || "");
+      }
+    } catch (err) {
+      alert("Erro ao deletar os dados do Firebase: " + err.message);
     }
   }
 
