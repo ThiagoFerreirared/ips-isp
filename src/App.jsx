@@ -5,6 +5,7 @@ import { doc, getDoc, setDoc, collection, getDocs, deleteDoc } from "firebase/fi
 import { db } from "./firebase/config";
 import Login from "./pages/Login";
 import IPTable from "./pages/IPTable";
+import RelatorioLinks from "./pages/RelatorioLinks";
 import GlobalSearch from "./components/GlobalSearch";
 
 const DEFAULT_CIDADES = [
@@ -21,8 +22,14 @@ async function deletarColecao(cidadeKey) {
   await Promise.all(snap.docs.map(d => deleteDoc(doc(db, "ips_" + cidadeKey, d.id))));
 }
 
+const MODULOS = [
+  { id: "ips", label: "🌐 IPs" },
+  { id: "relatorio", label: "📋 Relatório de Links" },
+];
+
 function Main() {
   const { user, logout } = useAuth();
+  const [modulo, setModulo] = useState("ips");
   const [cidades, setCidades] = useState(DEFAULT_CIDADES);
   const [cidade, setCidade] = useState("SANTAREM");
   const [loadingCidades, setLoadingCidades] = useState(true);
@@ -49,10 +56,7 @@ function Main() {
     const nome = prompt("Nome da nova aba (ex: NOVO_SITE):");
     if (!nome) return;
     const key = nome.trim().toUpperCase().replace(/\s+/g, "_");
-    if (cidades.includes(key)) { 
-      alert("Já existe!"); 
-      return; 
-    }
+    if (cidades.includes(key)) { alert("Já existe!"); return; }
     setCidades(c => [...c, key]);
     setCidade(key);
   }
@@ -71,103 +75,105 @@ function Main() {
     }
   }
 
-  function onDragStart(idx) {
-    setDragIdx(idx);
-  }
-
+  function onDragStart(idx) { setDragIdx(idx); }
   function onDragOver(e, idx) {
     e.preventDefault();
     if (dragIdx === null || dragIdx === idx) return;
-
     const nova = [...cidades];
     const [moved] = nova.splice(dragIdx, 1);
     nova.splice(idx, 0, moved);
     setCidades(nova);
     setDragIdx(idx);
   }
-
-  function onDragEnd() {
-    setDragIdx(null);
-  }
+  function onDragEnd() { setDragIdx(null); }
 
   return (
     <div>
       <div className="app-header">
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontSize: "1.5rem" }}>🌐</span>
-          <h1>Gerenciador de IPs — ISP</h1>
+          <h1>WSP FIBRA — Sistema ISP</h1>
         </div>
         <div className="header-right">
-          <GlobalSearch onSelect={(c) => setCidade(c)} />
+          {modulo === "ips" && <GlobalSearch onSelect={(c) => setCidade(c)} />}
           <span className="user-info">👤 {user.email}</span>
           <button className="btn btn-cancel btn-sm" onClick={logout}>Sair</button>
         </div>
       </div>
 
-      <div className="tabs">
-        {cidades.map((c, idx) => (
-          <div
-            key={c}
-            draggable
-            onDragStart={() => onDragStart(idx)}
-            onDragOver={(e) => onDragOver(e, idx)}
-            onDragEnd={onDragEnd}
+      <div style={{
+        display: "flex", gap: "4px", padding: "8px 16px",
+        background: "#0f172a", borderBottom: "2px solid #1e3a5f"
+      }}>
+        {MODULOS.map(m => (
+          <button
+            key={m.id}
+            onClick={() => setModulo(m.id)}
             style={{
-              position: "relative",
-              display: "inline-flex",
-              alignItems: "center",
-              opacity: dragIdx === idx ? 0.5 : 1,
-              cursor: "grab",
+              padding: "6px 18px", borderRadius: "6px", border: "none",
+              cursor: "pointer", fontWeight: 600, fontSize: "0.9rem",
+              background: modulo === m.id ? "#3b82f6" : "transparent",
+              color: modulo === m.id ? "#fff" : "#94a3b8",
+              transition: "all 0.15s",
             }}
-            onMouseEnter={() => setHoveredTab(c)}
-            onMouseLeave={() => setHoveredTab(null)}
           >
-            <button
-              className={"tab-btn" + (cidade === c ? " active" : "")}
-              onClick={() => setCidade(c)}
-              style={{ paddingRight: hoveredTab === c ? "28px" : undefined }}
-            >
-              {c.replace(/_/g, " ")}
-            </button>
-
-            {hoveredTab === c && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deletarCidade(c);
-                }}
-                title={`Deletar ${c}`}
-                style={{
-                  position: "absolute",
-                  right: "4px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: "11px",
-                  color: "#ef4444",
-                  lineHeight: 1,
-                  padding: "2px 3px",
-                  borderRadius: "3px",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-              >
-                ✕
-              </button>
-            )}
-          </div>
+            {m.label}
+          </button>
         ))}
-
-        <button className="tab-add" onClick={addCidade}>
-          + Nova cidade
-        </button>
       </div>
 
-      <div className="content">
-        <IPTable cidade={cidade} />
-      </div>
+      {modulo === "ips" && (
+        <>
+          <div className="tabs">
+            {cidades.map((c, idx) => (
+              <div
+                key={c}
+                draggable
+                onDragStart={() => onDragStart(idx)}
+                onDragOver={(e) => onDragOver(e, idx)}
+                onDragEnd={onDragEnd}
+                style={{
+                  position: "relative", display: "inline-flex", alignItems: "center",
+                  opacity: dragIdx === idx ? 0.5 : 1, cursor: "grab",
+                }}
+                onMouseEnter={() => setHoveredTab(c)}
+                onMouseLeave={() => setHoveredTab(null)}
+              >
+                <button
+                  className={"tab-btn" + (cidade === c ? " active" : "")}
+                  onClick={() => setCidade(c)}
+                  style={{ paddingRight: hoveredTab === c ? "28px" : undefined }}
+                >
+                  {c.replace(/_/g, " ")}
+                </button>
+                {hoveredTab === c && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deletarCidade(c); }}
+                    title={`Deletar ${c}`}
+                    style={{
+                      position: "absolute", right: "4px", top: "50%",
+                      transform: "translateY(-50%)", background: "none",
+                      border: "none", cursor: "pointer", fontSize: "11px",
+                      color: "#ef4444", lineHeight: 1, padding: "2px 3px",
+                      borderRadius: "3px", display: "flex", alignItems: "center",
+                    }}
+                  >✕</button>
+                )}
+              </div>
+            ))}
+            <button className="tab-add" onClick={addCidade}>+ Nova cidade</button>
+          </div>
+          <div className="content">
+            <IPTable cidade={cidade} />
+          </div>
+        </>
+      )}
+
+      {modulo === "relatorio" && (
+        <div className="content">
+          <RelatorioLinks />
+        </div>
+      )}
     </div>
   );
 }
