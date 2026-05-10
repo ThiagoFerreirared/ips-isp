@@ -20,25 +20,110 @@ const EMPRESA_DEFAULT = {
   oscar: "93 99116-7940",
 };
 
+// Helper: garante que o valor seja sempre array
+function toArr(v) {
+  if (!v) return [""];
+  if (Array.isArray(v)) return v.length ? v : [""];
+  return [v];
+}
+
+// Componente de lista dinâmica com + e -
+function MultiInput({ label, values, onChange }) {
+  function update(i, v) {
+    const nova = [...values];
+    nova[i] = v;
+    onChange(nova);
+  }
+  function add() { onChange([...values, ""]); }
+  function remove(i) {
+    if (values.length === 1) return;
+    onChange(values.filter((_, idx) => idx !== i));
+  }
+  return (
+    <div>
+      <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>{label}</span>
+      {values.map((v, i) => (
+        <div key={i} style={{ display: "flex", gap: 4, marginTop: 4 }}>
+          <input
+            className="search-input"
+            style={{ flex: 1 }}
+            value={v}
+            onChange={e => update(i, e.target.value)}
+          />
+          {values.length > 1 && (
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              style={{
+                background: "#7f1d1d", border: "none", borderRadius: 6,
+                color: "#fca5a5", fontWeight: 700, fontSize: "1rem",
+                width: 30, cursor: "pointer", flexShrink: 0,
+              }}
+            >−</button>
+          )}
+          {i === values.length - 1 && (
+            <button
+              type="button"
+              onClick={add}
+              style={{
+                background: "#1e3a5f", border: "none", borderRadius: 6,
+                color: "#60a5fa", fontWeight: 700, fontSize: "1rem",
+                width: 30, cursor: "pointer", flexShrink: 0,
+              }}
+            >+</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function LinkModal({ initial, onClose, onSave }) {
-  const [form, setForm] = useState(initial || { nome: "", capacidade: "", tipo: "TRANSPORTE", operadora: "", circuito: "", telefone: "", contato: "" });
+  const [form, setForm] = useState({
+    nome: initial?.nome || "",
+    capacidade: initial?.capacidade || "",
+    tipo: initial?.tipo || "TRANSPORTE",
+    operadora: initial?.operadora || "",
+    circuitos: toArr(initial?.circuitos || initial?.circuito),
+    telefones: toArr(initial?.telefones || initial?.telefone),
+    contato: initial?.contato || "",
+  });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
         <h2 style={{ marginBottom: "1rem" }}>{initial ? "Editar Link" : "Novo Link"}</h2>
-        <div style={{ display: "grid", gap: "10px" }}>
+        <div style={{ display: "grid", gap: "12px" }}>
           <label>Tipo
-            <select className="search-input" style={{ width: "100%", marginTop: 4 }} value={form.tipo} onChange={e => set("tipo", e.target.value)}>
+            <select className="search-input" style={{ width: "100%", marginTop: 4 }}
+              value={form.tipo} onChange={e => set("tipo", e.target.value)}>
               <option value="TRANSPORTE">Link de Transporte</option>
               <option value="IP">Link IP</option>
             </select>
           </label>
-          {[["nome","Nome do Link"],["capacidade","Capacidade (ex: 20GB)"],["operadora","Operadora"],["circuito","Circuito"],["telefone","Telefone"],["contato","Outros canais de atendimento"]].map(([k,l]) => (
+          {[["nome","Nome do Link"],["capacidade","Capacidade (ex: 20GB)"],["operadora","Operadora"]].map(([k,l]) => (
             <label key={k}>{l}
-              <input className="search-input" style={{ width: "100%", marginTop: 4 }} value={form[k]||""} onChange={e => set(k, e.target.value)} />
+              <input className="search-input" style={{ width: "100%", marginTop: 4 }}
+                value={form[k]} onChange={e => set(k, e.target.value)} />
             </label>
           ))}
+
+          <MultiInput
+            label="Circuito"
+            values={form.circuitos}
+            onChange={v => set("circuitos", v)}
+          />
+          <MultiInput
+            label="Telefone"
+            values={form.telefones}
+            onChange={v => set("telefones", v)}
+          />
+
+          <label>Outros canais de atendimento
+            <input className="search-input" style={{ width: "100%", marginTop: 4 }}
+              value={form.contato} onChange={e => set("contato", e.target.value)} />
+          </label>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
           <button className="btn btn-cancel btn-sm" onClick={onClose}>Cancelar</button>
@@ -64,7 +149,8 @@ function EmpresaModal({ empresa, onClose, onSave }) {
         <div style={{ display: "grid", gap: "10px" }}>
           {campos.map(([k,l]) => (
             <label key={k}>{l}
-              <input className="search-input" style={{ width: "100%", marginTop: 4 }} value={form[k]||""} onChange={e => set(k, e.target.value)} />
+              <input className="search-input" style={{ width: "100%", marginTop: 4 }}
+                value={form[k]||""} onChange={e => set(k, e.target.value)} />
             </label>
           ))}
         </div>
@@ -107,12 +193,18 @@ export default function RelatorioLinks() {
 
   async function salvarLink(form) {
     if (!form.nome?.trim()) return alert("Informe o nome do link.");
+    // Limpa campos vazios dos arrays
+    const payload = {
+      ...form,
+      circuitos: form.circuitos.filter(v => v.trim()),
+      telefones: form.telefones.filter(v => v.trim()),
+    };
     if (editando) {
-      await updateDoc(doc(db, COL_LINKS, editando), form);
-      setLinks(ls => ls.map(l => l.id === editando ? { ...l, ...form } : l));
+      await updateDoc(doc(db, COL_LINKS, editando), payload);
+      setLinks(ls => ls.map(l => l.id === editando ? { ...l, ...payload } : l));
     } else {
-      const ref = await addDoc(collection(db, COL_LINKS), form);
-      setLinks(ls => [...ls, { id: ref.id, ...form }]);
+      const ref = await addDoc(collection(db, COL_LINKS), payload);
+      setLinks(ls => [...ls, { id: ref.id, ...payload }]);
     }
     setModal(null); setEditando(null);
   }
@@ -137,7 +229,12 @@ export default function RelatorioLinks() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhasResumo), "Resumo");
     const linhasCircuitos = [
       ["OPERADORA","CIRCUITO","TELEFONE","OUTROS CANAIS"],
-      ...links.map(l => [l.operadora||"", l.circuito||"", l.telefone||"", l.contato||""]),
+      ...links.map(l => [
+        l.operadora||"",
+        toArr(l.circuitos || l.circuito).join(" / "),
+        toArr(l.telefones || l.telefone).join(" / "),
+        l.contato||"",
+      ]),
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhasCircuitos), "Circuitos");
     XLSX.writeFile(wb, "relatorio_links.xlsx");
@@ -157,14 +254,24 @@ export default function RelatorioLinks() {
     autoTable(pdf, {
       startY: 37,
       head: [["NOME","CAPACIDADE","OPERADORA","CIRCUITO","TELEFONE","CONTATO"]],
-      body: transporte.map(l => [l.nome||"",l.capacidade||"",l.operadora||"",l.circuito||"",l.telefone||"",l.contato||""]),
+      body: transporte.map(l => [
+        l.nome||"", l.capacidade||"", l.operadora||"",
+        toArr(l.circuitos||l.circuito).join("\n"),
+        toArr(l.telefones||l.telefone).join("\n"),
+        l.contato||"",
+      ]),
       styles: { fontSize: 8 },
     });
     pdf.text("LINKS IP", 14, pdf.lastAutoTable.finalY + 8);
     autoTable(pdf, {
       startY: pdf.lastAutoTable.finalY + 11,
       head: [["NOME","CAPACIDADE","OPERADORA","CIRCUITO","TELEFONE","CONTATO"]],
-      body: ip.map(l => [l.nome||"",l.capacidade||"",l.operadora||"",l.circuito||"",l.telefone||"",l.contato||""]),
+      body: ip.map(l => [
+        l.nome||"", l.capacidade||"", l.operadora||"",
+        toArr(l.circuitos||l.circuito).join("\n"),
+        toArr(l.telefones||l.telefone).join("\n"),
+        l.contato||"",
+      ]),
       styles: { fontSize: 8 },
     });
     pdf.save("relatorio_links.pdf");
@@ -220,7 +327,7 @@ export default function RelatorioLinks() {
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ background: "#0f172a" }}>
-                        {["Nome","Capacidade","Operadora","Circuito","Telefone",""].map((h,i) => (
+                        {["Nome","Capacidade","Operadora","Circuito(s)","Telefone(s)",""].map((h,i) => (
                           <th key={i} style={{ padding: "6px 10px", fontSize: "0.75rem", color: "#64748b", textAlign: "left" }}>{h}</th>
                         ))}
                       </tr>
@@ -234,8 +341,12 @@ export default function RelatorioLinks() {
                           <td style={{ padding: "6px 10px", fontSize: "0.82rem", fontWeight: 600, color: "#e2e8f0" }}>{l.nome}</td>
                           <td style={{ padding: "6px 10px", fontSize: "0.82rem", color: "#fbbf24" }}>{l.capacidade}</td>
                           <td style={{ padding: "6px 10px", fontSize: "0.82rem", color: "#94a3b8" }}>{l.operadora||"—"}</td>
-                          <td style={{ padding: "6px 10px", fontSize: "0.82rem", color: "#94a3b8" }}>{l.circuito||"—"}</td>
-                          <td style={{ padding: "6px 10px", fontSize: "0.82rem", color: "#94a3b8" }}>{l.telefone||"—"}</td>
+                          <td style={{ padding: "6px 10px", fontSize: "0.82rem", color: "#94a3b8" }}>
+                            {toArr(l.circuitos||l.circuito).map((c,i) => <div key={i}>{c||"—"}</div>)}
+                          </td>
+                          <td style={{ padding: "6px 10px", fontSize: "0.82rem", color: "#94a3b8" }}>
+                            {toArr(l.telefones||l.telefone).map((t,i) => <div key={i}>{t||"—"}</div>)}
+                          </td>
                           <td style={{ padding: "4px 8px" }}>
                             <div style={{ display: "flex", gap: 4 }}>
                               <button className="btn btn-edit" style={{ fontSize: "0.75rem", padding: "2px 6px" }}
