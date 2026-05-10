@@ -26,8 +26,19 @@ const EXTRA_COLS = {
 };
 
 function sortIP(ip="") {
-  const p = ip.split(".").map(Number);
-  return p[0]*16777216+p[1]*65536+p[2]*256+(p[3]||0);
+  return (ip || "").split(".").map(n => parseInt(n, 10) || 0)
+    .reduce((acc, val) => acc * 256 + val, 0);
+}
+
+function detectarBlocos(registros) {
+  const blocos = new Set();
+  registros.forEach(r => {
+    if (r.ip) {
+      const partes = r.ip.split(".");
+      if (partes.length === 4) blocos.add(partes.slice(0,3).join("."));
+    }
+  });
+  return ["TODOS", ...Array.from(blocos).sort()];
 }
 
 export default function IPTable({ cidade }) {
@@ -36,6 +47,7 @@ export default function IPTable({ cidade }) {
   const [loading, setLoading]     = useState(true);
   const [busca, setBusca]         = useState("");
   const [filtro, setFiltro]       = useState("TODOS");
+  const [bloco, setBloco]         = useState("TODOS");
   const [pagina, setPagina]       = useState(1);
   const [modal, setModal]         = useState(null);
   const [selecionado, setSelecionado] = useState(null);
@@ -55,7 +67,10 @@ export default function IPTable({ cidade }) {
     setLoading(false);
   }
 
-  useEffect(() => { carregar(); setBusca(""); setFiltro("TODOS"); setPagina(1); }, [cidade]);
+  useEffect(() => {
+    carregar();
+    setBusca(""); setFiltro("TODOS"); setBloco("TODOS"); setPagina(1);
+  }, [cidade]);
 
   async function salvar(form) {
     if (!form.ip?.trim()) return alert("Informe o IP.");
@@ -69,19 +84,15 @@ export default function IPTable({ cidade }) {
         await updateDoc(doc(db, colKey, selecionado), form);
         if (Object.keys(diff).length) {
           await addDoc(collection(db,"historico"), {
-            ip: form.ip, cidade: toKey(cidade),
-            acao: "Edição", diff,
-            usuario: user?.email || "desconhecido",
-            timestamp: serverTimestamp()
+            ip: form.ip, cidade: toKey(cidade), acao: "Edição", diff,
+            usuario: user?.email || "desconhecido", timestamp: serverTimestamp()
           });
         }
       } else {
         await addDoc(colRef, form);
         await addDoc(collection(db,"historico"), {
-          ip: form.ip, cidade: toKey(cidade),
-          acao: "Criação", diff: {},
-          usuario: user?.email || "desconhecido",
-          timestamp: serverTimestamp()
+          ip: form.ip, cidade: toKey(cidade), acao: "Criação", diff: {},
+          usuario: user?.email || "desconhecido", timestamp: serverTimestamp()
         });
       }
       setModal(null); setSelecionado(null); carregar();
@@ -102,6 +113,8 @@ export default function IPTable({ cidade }) {
   function abrirHist(r)   { setSelecionado(r); setModal("hist"); }
   function fechar()       { setModal(null); setSelecionado(null); }
 
+  const blocos = detectarBlocos(registros);
+
   const filtrados = registros.filter(r => {
     const txt = busca.toLowerCase();
     const matchBusca = !txt || r.ip?.includes(txt) || r.login?.toLowerCase().includes(txt)
@@ -109,15 +122,16 @@ export default function IPTable({ cidade }) {
     const tipo = classifyLogin(r.login);
     const matchFiltro = filtro === "TODOS" || tipo === filtro.toLowerCase()
       || (filtro === "USADO" && tipo !== "vago");
-    return matchBusca && matchFiltro;
+    const matchBloco = bloco === "TODOS" || r.ip?.startsWith(bloco + ".");
+    return matchBusca && matchFiltro && matchBloco;
   });
 
   const totalPags = Math.max(1, Math.ceil(filtrados.length / PAGE_SIZE));
   const pagAtual  = Math.min(pagina, totalPags);
   const slice     = filtrados.slice((pagAtual-1)*PAGE_SIZE, pagAtual*PAGE_SIZE);
 
-  const vagos   = registros.filter(r => classifyLogin(r.login)==="vago").length;
-  const usados  = registros.length - vagos;
+  const vagos  = registros.filter(r => classifyLogin(r.login)==="vago").length;
+  const usados = registros.length - vagos;
 
   return (
     <div>
@@ -128,7 +142,14 @@ export default function IPTable({ cidade }) {
       </div>
 
       <div className="toolbar">
-        <input className="search-input" style={{width:"220px"}} placeholder="🔍 Buscar IP, login..." value={busca} onChange={e=>{setBusca(e.target.value);setPagina(1);}} />
+        <input
+          className="search-input"
+          style={{width:"220px"}}
+          placeholder="🔍 Buscar IP, login..."
+          value={busca}
+          onChange={e=>{setBusca(e.target.value);setPagina(1);}}
+        />
+
         <select className="search-input" style={{width:"130px"}} value={filtro} onChange={e=>{setFiltro(e.target.value);setPagina(1);}}>
           <option value="TODOS">Todos</option>
           <option value="vago">Vagos</option>
@@ -137,6 +158,15 @@ export default function IPTable({ cidade }) {
           <option value="cgnat">CGNAT</option>
           <option value="cliente">Clientes</option>
         </select>
+
+        {blocos.length > 2 && (
+          <select className="search-input" style={{width:"160px"}} value={bloco} onChange={e=>{setBloco(e.target.value);setPagina(1);}}>
+            {blocos.map(b => (
+              <option key={b} value={b}>{b === "TODOS" ? "Todos os blocos" : b + ".0/24"}</option>
+            ))}
+          </select>
+        )}
+
         <button className="btn btn-primary btn-sm"  onClick={()=>setModal("add")}>+ Novo IP</button>
         <button className="btn btn-success btn-sm"  onClick={()=>setModal("gen")}>⚡ Gerar Bloco</button>
         <button className="btn btn-purple btn-sm"   onClick={()=>setModal("bulk")}>📥 Importar Lista</button>
@@ -150,10 +180,10 @@ export default function IPTable({ cidade }) {
               <tr>
                 <th>#</th>
                 <th>IP</th>
-                <th>Login / Uso</th>
+                <th>Login</th>
                 {extras.map(e => <th key={e}>{e.replace(/_/g," ")}</th>)}
                 <th>Data</th>
-                <th>Obs</th>
+                <th>Observação</th>
                 <th>Ações</th>
               </tr>
             </thead>
@@ -163,17 +193,18 @@ export default function IPTable({ cidade }) {
               )}
               {slice.map((r, i) => {
                 const tipo = classifyLogin(r.login);
+                const loginExibido = r.login?.trim() ? r.login : "VAGO";
                 return (
                   <tr key={r.id} className={rowClass(tipo)}>
                     <td style={{color:"#475569"}}>{(pagAtual-1)*PAGE_SIZE+i+1}</td>
                     <td className="ip-cell">{r.ip}</td>
-                    <td><span className={badgeClass(tipo)}>{r.login}</span></td>
+                    <td><span className={badgeClass(tipo)}>{loginExibido}</span></td>
                     {extras.map(e => <td key={e} className="col-extra">{r[e]||""}</td>)}
                     <td style={{color:"#64748b",fontSize:".78rem"}}>{r.data}</td>
                     <td className="obs-cell" title={r.obs}>{r.obs||""}</td>
                     <td style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>
-                      <button className="btn btn-edit"  onClick={()=>abrirEditar(r)}>✏️</button>
-                      <button className="btn btn-hist"  onClick={()=>abrirHist(r)}>📋</button>
+                      <button className="btn btn-edit"   onClick={()=>abrirEditar(r)}>✏️</button>
+                      <button className="btn btn-hist"   onClick={()=>abrirHist(r)}>📋</button>
                       <button className="btn btn-danger" onClick={()=>excluir(r.id,r.ip)}>🗑️</button>
                     </td>
                   </tr>
@@ -188,13 +219,16 @@ export default function IPTable({ cidade }) {
         <div className="pagination">
           <button className="page-btn" onClick={()=>setPagina(1)} disabled={pagAtual===1}>«</button>
           <button className="page-btn" onClick={()=>setPagina(p=>Math.max(1,p-1))} disabled={pagAtual===1}>‹</button>
-          {Array.from({length:totalPags},(_,i)=>i+1).filter(p => Math.abs(p-pagAtual)<=2||p===1||p===totalPags).reduce((acc,p,i,arr) => {
-            if (i>0 && p-arr[i-1]>1) acc.push("...");
-            acc.push(p); return acc;
-          },[]).map((p,i) =>
-            p==="..." ? <span key={"e"+i} className="page-info">...</span>
-            : <button key={p} className={"page-btn"+(p===pagAtual?" active":"")} onClick={()=>setPagina(p)}>{p}</button>
-          )}
+          {Array.from({length:totalPags},(_,i)=>i+1)
+            .filter(p => Math.abs(p-pagAtual)<=2||p===1||p===totalPags)
+            .reduce((acc,p,i,arr) => {
+              if (i>0 && p-arr[i-1]>1) acc.push("...");
+              acc.push(p); return acc;
+            },[])
+            .map((p,i) =>
+              p==="..." ? <span key={"e"+i} className="page-info">...</span>
+              : <button key={p} className={"page-btn"+(p===pagAtual?" active":"")} onClick={()=>setPagina(p)}>{p}</button>
+            )}
           <button className="page-btn" onClick={()=>setPagina(p=>Math.min(totalPags,p+1))} disabled={pagAtual===totalPags}>›</button>
           <button className="page-btn" onClick={()=>setPagina(totalPags)} disabled={pagAtual===totalPags}>»</button>
           <span className="page-info">{filtrados.length} registros</span>
