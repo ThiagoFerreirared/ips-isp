@@ -1,312 +1,259 @@
-import React, { useState, useEffect } from "react";
-import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, serverTimestamp, getDoc } from "firebase/firestore";
-import { db } from "../firebase/config";
+import React, { useState, useMemo } from "react";
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { Plus, Pencil, Trash2, FileSpreadsheet, FileText, CalendarClock } from "lucide-react";
+import { db } from "../firebase/config";
+import { useCollection } from "../hooks/useCollection";
+import { useToast } from "../context/ToastContext";
+import { Card, Button, Input, Select, Field, Modal, Loading, EmptyState } from "../components/ui";
+import { cn } from "../lib/cn";
 
 const COL = "historico_eventos";
 const COL_LINKS = "relatorio_links";
 const STATUS_OPTS = ["DEGRADAÇÃO", "INDISPONÍVEL", "NORMALIZADO"];
 
-function statusStyle(s) {
-  const v = (s||"").toUpperCase();
-  if (v === "INDISPONÍVEL") return { background: "#fecaca", color: "#7f1d1d" };
-  if (v === "DEGRADAÇÃO")   return { background: "#fef3c7", color: "#78350f" };
-  return { background: "#dcfce7", color: "#14532d" };
-}
+const STATUS_STYLE = {
+  INDISPONÍVEL: "bg-red-500/15 text-red-400",
+  DEGRADAÇÃO: "bg-amber-500/15 text-amber-400",
+  NORMALIZADO: "bg-emerald-500/15 text-emerald-400",
+};
+const statusClass = (s) => STATUS_STYLE[(s || "").toUpperCase()] || STATUS_STYLE.NORMALIZADO;
+
+const toISO = (d) => (/^\d{2}\/\d{2}\/\d{4}$/.test(d || "") ? d.split("/").reverse().join("-") : d || "");
+const fmtDate = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d || "") ? d.split("-").reverse().join("/") : d || "");
 
 function EventoModal({ initial, onClose, onSave, linksTransporte, linksIP }) {
-  const [form, setForm] = useState(initial || {
-    data: "", status: "DEGRADAÇÃO", protocolo: "",
-    tipo_link: "", operadora: "", hora_inicio: "", hora_termino: "", evento: ""
-  });
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const [form, setForm] = useState(
+    initial || { data: "", status: "DEGRADAÇÃO", protocolo: "", tipo_link: "", operadora: "", hora_inicio: "", hora_termino: "", evento: "" }
+  );
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const opcoes = form.tipo_link === "TRANSPORTE" ? linksTransporte : form.tipo_link === "IP" ? linksIP : [];
 
-  // Monta lista de operadoras conforme tipo selecionado
-  const opcoesOperadora = form.tipo_link === "TRANSPORTE"
-    ? linksTransporte
-    : form.tipo_link === "IP"
-    ? linksIP
-    : [];
+  function handleTipo(v) {
+    const novas = v === "TRANSPORTE" ? linksTransporte : v === "IP" ? linksIP : [];
+    setForm((f) => ({ ...f, tipo_link: v, operadora: novas.includes(f.operadora) ? f.operadora : "" }));
+  }
 
-  function handleTipoLink(v) {
-    // Ao mudar tipo, reset operadora se não pertencer ao novo tipo
-    const novasOps = v === "TRANSPORTE" ? linksTransporte : v === "IP" ? linksIP : [];
-    const novaOp = novasOps.includes(form.operadora) ? form.operadora : "";
-    setForm(f => ({ ...f, tipo_link: v, operadora: novaOp }));
+  function submit() {
+    const operadora = form.operadora === "__outro__" ? (form.operadora_custom || "").trim() : form.operadora;
+    onSave({ ...form, operadora });
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
-        <h2 style={{ marginBottom: "1rem" }}>{initial ? "Editar Evento" : "Novo Evento"}</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+    <Modal
+      title={initial ? "Editar evento" : "Novo evento"}
+      icon={CalendarClock}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button size="sm" onClick={submit}>Salvar</Button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3.5">
+        <Field label="Data"><Input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></Field>
+        <Field label="Status">
+          <Select value={form.status} onChange={(e) => set("status", e.target.value)}>
+            {STATUS_OPTS.map((s) => <option key={s}>{s}</option>)}
+          </Select>
+        </Field>
+        <Field label="Protocolo"><Input value={form.protocolo} onChange={(e) => set("protocolo", e.target.value)} /></Field>
+        <Field label="Tipo de link">
+          <Select value={form.tipo_link} onChange={(e) => handleTipo(e.target.value)}>
+            <option value="">Selecione…</option>
+            <option value="TRANSPORTE">Link de Transporte</option>
+            <option value="IP">Link IP</option>
+          </Select>
+        </Field>
 
-          <label>Data
-            <input type="date" className="search-input" style={{ width: "100%", marginTop: 4 }}
-              value={form.data} onChange={e => set("data", e.target.value)} />
-          </label>
-          <label>Status
-            <select className="search-input" style={{ width: "100%", marginTop: 4 }}
-              value={form.status} onChange={e => set("status", e.target.value)}>
-              {STATUS_OPTS.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </label>
+        {form.tipo_link && (
+          <Field label="Operadora" className="col-span-2">
+            <Select value={form.operadora} onChange={(e) => set("operadora", e.target.value)}>
+              <option value="">Selecione a operadora…</option>
+              {opcoes.map((o) => <option key={o} value={o}>{o}</option>)}
+              <option value="__outro__">➕ Outra (digitar)</option>
+            </Select>
+            {form.operadora === "__outro__" && (
+              <Input className="mt-2" placeholder="Nome da operadora" value={form.operadora_custom || ""} onChange={(e) => set("operadora_custom", e.target.value)} />
+            )}
+          </Field>
+        )}
 
-          <label>Protocolo
-            <input className="search-input" style={{ width: "100%", marginTop: 4 }}
-              value={form.protocolo} onChange={e => set("protocolo", e.target.value)} />
-          </label>
-
-          {/* Tipo de link — ocupa a coluna da direita */}
-          <label>Tipo de Link
-            <select
-              className="search-input"
-              style={{ width: "100%", marginTop: 4 }}
-              value={form.tipo_link}
-              onChange={e => handleTipoLink(e.target.value)}
-            >
-              <option value="">Selecione…</option>
-              <option value="TRANSPORTE">Link de Transporte</option>
-              <option value="IP">Link IP</option>
-            </select>
-          </label>
-
-          {/* Operadora aparece só quando tipo foi escolhido */}
-          {form.tipo_link && (
-            <label style={{ gridColumn: "1 / -1" }}>Operadora
-              <select
-                className="search-input"
-                style={{ width: "100%", marginTop: 4 }}
-                value={form.operadora}
-                onChange={e => set("operadora", e.target.value)}
-              >
-                <option value="">Selecione a operadora…</option>
-                {opcoesOperadora.map(o => (
-                  <option key={o} value={o}>{o}</option>
-                ))}
-                <option value="__outro__">➕ Outra (digitar)</option>
-              </select>
-              {/* Campo livre se escolher "Outra" */}
-              {form.operadora === "__outro__" && (
-                <input
-                  className="search-input"
-                  style={{ width: "100%", marginTop: 6 }}
-                  placeholder="Digite o nome da operadora"
-                  value={form.operadora_custom || ""}
-                  onChange={e => set("operadora_custom", e.target.value)}
-                />
-              )}
-            </label>
-          )}
-
-          <label>Hora de Início
-            <input type="time" className="search-input" style={{ width: "100%", marginTop: 4 }}
-              value={form.hora_inicio} onChange={e => set("hora_inicio", e.target.value)} />
-          </label>
-          <label>Hora de Término
-            <input type="time" className="search-input" style={{ width: "100%", marginTop: 4 }}
-              value={form.hora_termino} onChange={e => set("hora_termino", e.target.value)} />
-          </label>
-        </div>
-
-        <label style={{ marginTop: 10, display: "block" }}>Evento
-          <input className="search-input" style={{ width: "100%", marginTop: 4 }}
-            value={form.evento} onChange={e => set("evento", e.target.value)} />
-        </label>
-
-        <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
-          <button className="btn btn-cancel btn-sm" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary btn-sm" onClick={() => {
-            // Resolve operadora final
-            const opFinal = form.operadora === "__outro__"
-              ? (form.operadora_custom || "").trim()
-              : form.operadora;
-            onSave({ ...form, operadora: opFinal });
-          }}>Salvar</button>
-        </div>
+        <Field label="Hora de início"><Input type="time" value={form.hora_inicio} onChange={(e) => set("hora_inicio", e.target.value)} /></Field>
+        <Field label="Hora de término"><Input type="time" value={form.hora_termino} onChange={(e) => set("hora_termino", e.target.value)} /></Field>
+        <Field label="Evento" className="col-span-2"><Input value={form.evento} onChange={(e) => set("evento", e.target.value)} /></Field>
       </div>
-    </div>
+    </Modal>
   );
 }
 
 export default function HistoricoEventos() {
-  const [eventos, setEventos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(false);
-  const [editando, setEditando] = useState(null);
-  const [filtroOp, setFiltroOp] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState("TODOS");
-  const [filtroTipo, setFiltroTipo] = useState("TODOS");
-  const [linksTransporte, setLinksTransporte] = useState([]);
-  const [linksIP, setLinksIP] = useState([]);
+  const toast = useToast();
+  const { data: eventos, loading } = useCollection(COL);
+  const { data: links } = useCollection(COL_LINKS);
 
-  async function carregar() {
-    setLoading(true);
-    try {
-      // Carrega eventos
-      const snap = await getDocs(collection(db, COL));
-      const dados = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      dados.sort((a, b) => {
-        const da = a.data?.split("/").reverse().join("-") || "";
-        const db2 = b.data?.split("/").reverse().join("-") || "";
-        return db2.localeCompare(da);
-      });
-      setEventos(dados);
+  const [modal, setModal] = useState(null);
+  const [fStatus, setFStatus] = useState("TODOS");
+  const [fTipo, setFTipo] = useState("TODOS");
+  const [fOp, setFOp] = useState("");
 
-      // Carrega operadoras do relatório de links
-      const snapLinks = await getDocs(collection(db, COL_LINKS));
-      const links = snapLinks.docs.map(d => d.data());
-      const opTransporte = [...new Set(
-        links.filter(l => l.tipo === "TRANSPORTE" && l.operadora)
-             .map(l => l.operadora)
-      )].sort();
-      const opIP = [...new Set(
-        links.filter(l => l.tipo === "IP" && l.operadora)
-             .map(l => l.operadora)
-      )].sort();
-      setLinksTransporte(opTransporte);
-      setLinksIP(opIP);
-    } catch(e) { console.error(e); }
-    setLoading(false);
-  }
+  const linksTransporte = useMemo(
+    () => [...new Set(links.filter((l) => l.tipo === "TRANSPORTE" && l.operadora).map((l) => l.operadora))].sort(),
+    [links]
+  );
+  const linksIP = useMemo(
+    () => [...new Set(links.filter((l) => l.tipo === "IP" && l.operadora).map((l) => l.operadora))].sort(),
+    [links]
+  );
 
-  useEffect(() => { carregar(); }, []);
+  const ordenados = useMemo(
+    () => [...eventos].sort((a, b) => toISO(b.data).localeCompare(toISO(a.data))),
+    [eventos]
+  );
+  const operadoras = useMemo(() => [...new Set(eventos.map((e) => e.operadora).filter(Boolean))], [eventos]);
+
+  const filtrados = ordenados.filter((e) => {
+    const mOp = !fOp || e.operadora === fOp;
+    const mStatus = fStatus === "TODOS" || e.status === fStatus;
+    const mTipo = fTipo === "TODOS" || e.tipo_link === fTipo;
+    return mOp && mStatus && mTipo;
+  });
 
   async function salvar(form) {
-    if (!form.data) return alert("Informe a data.");
-    // Remove campo auxiliar antes de salvar
+    if (!form.data) return toast.error("Informe a data.");
     const { operadora_custom, ...payload } = form;
-    if (editando) {
-      await updateDoc(doc(db, COL, editando), payload);
-      setEventos(ev => ev.map(e => e.id === editando ? { ...e, ...payload } : e));
-    } else {
-      const ref = await addDoc(collection(db, COL), { ...payload, timestamp: serverTimestamp() });
-      setEventos(ev => [{ id: ref.id, ...payload }, ...ev]);
+    try {
+      if (modal?.record) await updateDoc(doc(db, COL, modal.record.id), payload);
+      else await addDoc(collection(db, COL), { ...payload, timestamp: serverTimestamp() });
+      toast.success("Evento salvo.");
+      setModal(null);
+    } catch (e) {
+      toast.error("Erro: " + e.message);
     }
-    setModal(false); setEditando(null);
   }
 
   async function excluir(id) {
-    if (!confirm("Excluir este evento?")) return;
+    const ok = await toast.confirm({ title: "Excluir evento", message: "Excluir este evento?", confirmLabel: "Excluir", danger: true });
+    if (!ok) return;
     await deleteDoc(doc(db, COL, id));
-    setEventos(ev => ev.filter(e => e.id !== id));
+    toast.success("Evento excluído.");
   }
 
   function exportarExcel() {
     const wb = XLSX.utils.book_new();
-    const rows = [
-      ["DATA","STATUS","TIPO LINK","PROTOCOLO","OPERADORA","HORA INÍCIO","HORA TÉRMINO","EVENTO"],
-      ...filtrados.map(e => [e.data,e.status,e.tipo_link||"",e.protocolo,e.operadora,e.hora_inicio,e.hora_termino,e.evento])
-    ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Histórico");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ["DATA", "STATUS", "TIPO LINK", "PROTOCOLO", "OPERADORA", "HORA INÍCIO", "HORA TÉRMINO", "EVENTO"],
+      ...filtrados.map((e) => [fmtDate(e.data), e.status, e.tipo_link || "", e.protocolo, e.operadora, e.hora_inicio, e.hora_termino, e.evento]),
+    ]), "Histórico");
     XLSX.writeFile(wb, "historico_eventos.xlsx");
   }
 
   function exportarPDF() {
     const pdf = new jsPDF({ orientation: "landscape" });
-    pdf.setFontSize(13);
-    pdf.text("Histórico de Eventos", 14, 14);
+    pdf.setFontSize(13); pdf.text("Histórico de Eventos", 14, 14);
     autoTable(pdf, {
       startY: 20,
-      head: [["DATA","STATUS","TIPO","PROTOCOLO","OPERADORA","INÍCIO","TÉRMINO","EVENTO"]],
-      body: filtrados.map(e => [e.data,e.status,e.tipo_link||"",e.protocolo,e.operadora,e.hora_inicio,e.hora_termino,e.evento]),
+      head: [["DATA", "STATUS", "TIPO", "PROTOCOLO", "OPERADORA", "INÍCIO", "TÉRMINO", "EVENTO"]],
+      body: filtrados.map((e) => [fmtDate(e.data), e.status, e.tipo_link || "", e.protocolo, e.operadora, e.hora_inicio, e.hora_termino, e.evento]),
       styles: { fontSize: 8 },
-      didParseCell: (data) => {
-        if (data.section === "body" && data.column.index === 1) {
-          const v = (data.cell.raw||"").toUpperCase();
-          if (v === "INDISPONÍVEL") data.cell.styles.fillColor = [254, 202, 202];
-          else if (v === "DEGRADAÇÃO") data.cell.styles.fillColor = [254, 243, 199];
+      didParseCell: (d) => {
+        if (d.section === "body" && d.column.index === 1) {
+          const v = (d.cell.raw || "").toUpperCase();
+          if (v === "INDISPONÍVEL") d.cell.styles.fillColor = [254, 202, 202];
+          else if (v === "DEGRADAÇÃO") d.cell.styles.fillColor = [254, 243, 199];
         }
-      }
+      },
     });
     pdf.save("historico_eventos.pdf");
   }
 
-  const operadoras = [...new Set(eventos.map(e => e.operadora).filter(Boolean))];
-  const filtrados = eventos.filter(e => {
-    const matchOp = !filtroOp || e.operadora === filtroOp;
-    const matchStatus = filtroStatus === "TODOS" || e.status === filtroStatus;
-    const matchTipo = filtroTipo === "TODOS" || e.tipo_link === filtroTipo;
-    return matchOp && matchStatus && matchTipo;
-  });
-
   return (
-    <div style={{ padding: "16px" }}>
-      <div className="toolbar" style={{ marginBottom: 12 }}>
-        <button className="btn btn-primary btn-sm" onClick={() => { setEditando(null); setModal(true); }}>+ Novo Evento</button>
-        <select className="search-input" style={{ width: 150 }} value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}>
+    <div className="space-y-5 p-4 md:p-6">
+      <div>
+        <h1 className="text-xl font-extrabold tracking-tight text-text">Histórico de Eventos</h1>
+        <p className="text-sm text-muted">Registro de degradações, indisponibilidades e normalizações</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Button size="sm" onClick={() => setModal({ type: "evento", record: null })}><Plus className="h-4 w-4" /> Novo evento</Button>
+        <Select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="w-auto">
           <option value="TODOS">Todos os status</option>
-          {STATUS_OPTS.map(s => <option key={s}>{s}</option>)}
-        </select>
-        <select className="search-input" style={{ width: 150 }} value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
+          {STATUS_OPTS.map((s) => <option key={s}>{s}</option>)}
+        </Select>
+        <Select value={fTipo} onChange={(e) => setFTipo(e.target.value)} className="w-auto">
           <option value="TODOS">Todos os tipos</option>
           <option value="TRANSPORTE">Transporte</option>
           <option value="IP">IP</option>
-        </select>
-        <select className="search-input" style={{ width: 160 }} value={filtroOp} onChange={e => setFiltroOp(e.target.value)}>
+        </Select>
+        <Select value={fOp} onChange={(e) => setFOp(e.target.value)} className="w-auto">
           <option value="">Todas operadoras</option>
-          {operadoras.map(o => <option key={o}>{o}</option>)}
-        </select>
-        <button className="btn btn-success btn-sm" onClick={exportarExcel}>📊 Excel</button>
-        <button className="btn btn-orange btn-sm" onClick={exportarPDF}>📄 PDF</button>
+          {operadoras.map((o) => <option key={o}>{o}</option>)}
+        </Select>
+        <div className="ml-auto flex gap-2">
+          <Button size="sm" variant="success" onClick={exportarExcel}><FileSpreadsheet className="h-4 w-4" /> Excel</Button>
+          <Button size="sm" variant="orange" onClick={exportarPDF}><FileText className="h-4 w-4" /> PDF</Button>
+        </div>
       </div>
 
-      {loading ? <div className="loading">Carregando...</div> : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th><th>Data</th><th>Status</th><th>Tipo</th><th>Protocolo</th>
-                <th>Operadora</th><th>Início</th><th>Término</th><th>Evento</th><th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrados.length === 0 && (
-                <tr><td colSpan={10} className="empty">Nenhum evento registrado.</td></tr>
-              )}
-              {filtrados.map((e, i) => (
-                <tr key={e.id} style={statusStyle(e.status)}>
-                  <td style={{ color: "#475569" }}>{i + 1}</td>
-                  <td style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{e.data}</td>
-                  <td>
-                    <span style={{
-                      padding: "2px 8px", borderRadius: 99, fontSize: "0.72rem",
-                      fontWeight: 700, ...statusStyle(e.status)
-                    }}>{e.status}</span>
-                  </td>
-                  <td>
-                    {e.tipo_link && (
-                      <span style={{
-                        padding: "2px 8px", borderRadius: 99, fontSize: "0.72rem", fontWeight: 700,
-                        background: e.tipo_link === "TRANSPORTE" ? "#dbeafe" : "#ede9fe",
-                        color: e.tipo_link === "TRANSPORTE" ? "#1e3a8a" : "#4c1d95",
-                      }}>{e.tipo_link}</span>
-                    )}
-                  </td>
-                  <td>{e.protocolo}</td>
-                  <td style={{ fontWeight: 600 }}>{e.operadora}</td>
-                  <td>{e.hora_inicio}</td>
-                  <td>{e.hora_termino}</td>
-                  <td>{e.evento}</td>
-                  <td>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <button className="btn btn-edit" onClick={() => { setEditando(e.id); setModal(true); }}>✏️</button>
-                      <button className="btn btn-danger" onClick={() => excluir(e.id)}>🗑️</button>
-                    </div>
-                  </td>
+      <Card className="overflow-hidden">
+        {loading ? (
+          <Loading />
+        ) : filtrados.length === 0 ? (
+          <EmptyState icon={CalendarClock} title="Nenhum evento" desc="Registre um evento para começar." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th className="w-10">#</th><th>Data</th><th>Status</th><th>Tipo</th><th>Protocolo</th>
+                  <th>Operadora</th><th>Início</th><th>Término</th><th>Evento</th><th className="text-right">Ações</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {filtrados.map((e, i) => (
+                  <tr key={e.id}>
+                    <td className="text-muted">{i + 1}</td>
+                    <td className="whitespace-nowrap font-medium text-text">{fmtDate(e.data)}</td>
+                    <td><span className={cn("badge", statusClass(e.status))}>{e.status}</span></td>
+                    <td>
+                      {e.tipo_link && (
+                        <span className={cn("badge", e.tipo_link === "TRANSPORTE" ? "bg-sky-500/15 text-sky-400" : "bg-violet-500/15 text-violet-400")}>
+                          {e.tipo_link}
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-muted">{e.protocolo}</td>
+                    <td className="font-medium text-text-soft">{e.operadora}</td>
+                    <td className="text-muted">{e.hora_inicio}</td>
+                    <td className="text-muted">{e.hora_termino}</td>
+                    <td className="max-w-[220px] truncate text-muted" title={e.evento}>{e.evento}</td>
+                    <td>
+                      <div className="flex justify-end gap-1">
+                        <button onClick={() => setModal({ type: "evento", record: e })} title="Editar"
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted transition hover:text-primary hover:bg-surface-2">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => excluir(e.id)} title="Excluir"
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted transition hover:border-red-500/40 hover:text-red-500 hover:bg-surface-2">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
-      {modal && (
+      {modal?.type === "evento" && (
         <EventoModal
-          initial={editando ? eventos.find(e => e.id === editando) : null}
-          onClose={() => { setModal(false); setEditando(null); }}
+          initial={modal.record}
+          onClose={() => setModal(null)}
           onSave={salvar}
           linksTransporte={linksTransporte}
           linksIP={linksIP}

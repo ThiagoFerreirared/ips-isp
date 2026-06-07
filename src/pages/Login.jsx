@@ -1,8 +1,12 @@
 import React, { useState } from "react";
+import { Globe, Sun, Moon, LogIn } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
+import { Button, Input, Field, Spinner } from "../components/ui";
 
 export default function Login() {
   const { login } = useAuth();
+  const { theme, toggle } = useTheme();
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
@@ -10,68 +14,69 @@ export default function Login() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setErro(""); setLoading(true);
+    setErro("");
+    setLoading(true);
     try {
       await login(email, senha);
     } catch {
       setErro("Email ou senha incorretos.");
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (
-    <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center", background: "#0a0f1e"
-    }}>
-      <div style={{
-        background: "#0f172a", border: "1px solid #1e293b",
-        borderRadius: 12, padding: "40px 36px", width: "100%", maxWidth: 380,
-        boxShadow: "0 20px 60px rgba(0,0,0,0.5)"
-      }}>
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontSize: "2.2rem", marginBottom: 8 }}>🌐</div>
-          <h1 style={{ color: "#60a5fa", fontSize: "1.5rem", fontWeight: 800, margin: 0 }}>WSP FIBRA</h1>
-          <p style={{ color: "#475569", fontSize: "0.82rem", marginTop: 4 }}>Sistema de Documentação ISP</p>
+    <div className="relative flex min-h-full items-center justify-center overflow-hidden bg-bg p-4">
+      {/* glow de fundo */}
+      <div className="pointer-events-none absolute -top-40 left-1/2 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-primary/20 blur-[120px]" />
+
+      <button
+        onClick={toggle}
+        className="absolute right-5 top-5 grid h-10 w-10 place-items-center rounded-xl text-muted transition hover:bg-surface-2 hover:text-text"
+        title={theme === "dark" ? "Tema claro" : "Tema escuro"}
+      >
+        {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+      </button>
+
+      <div className="card relative w-full max-w-sm p-8">
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-primary/15 text-3xl">
+            <Globe className="h-7 w-7 text-primary" />
+          </div>
+          <h1 className="text-xl font-extrabold tracking-tight text-text">WSP FIBRA</h1>
+          <p className="mt-1 text-sm text-muted">Sistema de Documentação ISP</p>
         </div>
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <label style={{ color: "#94a3b8", fontSize: "0.8rem", display: "block", marginBottom: 4 }}>Email</label>
-            <input
-              type="email" required value={email}
-              onChange={e => setEmail(e.target.value)}
-              style={{
-                width: "100%", padding: "10px 12px", borderRadius: 8,
-                border: "1px solid #1e293b", background: "#1e293b",
-                color: "#e2e8f0", fontSize: "0.9rem", outline: "none", boxSizing: "border-box"
-              }}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Field label="Email">
+            <Input
+              type="email"
+              required
+              autoFocus
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               placeholder="seu@email.com"
             />
-          </div>
-          <div>
-            <label style={{ color: "#94a3b8", fontSize: "0.8rem", display: "block", marginBottom: 4 }}>Senha</label>
-            <input
-              type="password" required value={senha}
-              onChange={e => setSenha(e.target.value)}
-              style={{
-                width: "100%", padding: "10px 12px", borderRadius: 8,
-                border: "1px solid #1e293b", background: "#1e293b",
-                color: "#e2e8f0", fontSize: "0.9rem", outline: "none", boxSizing: "border-box"
-              }}
+          </Field>
+          <Field label="Senha">
+            <Input
+              type="password"
+              required
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
               placeholder="••••••••"
             />
-          </div>
-          {erro && <div style={{ color: "#f87171", fontSize: "0.82rem", textAlign: "center" }}>{erro}</div>}
-          <button
-            type="submit" disabled={loading}
-            style={{
-              marginTop: 4, padding: "11px", borderRadius: 8, border: "none",
-              background: loading ? "#1e3a5f" : "#3b82f6", color: "#fff",
-              fontWeight: 700, fontSize: "0.95rem", cursor: loading ? "not-allowed" : "pointer"
-            }}
-          >
-            {loading ? "Entrando..." : "Entrar"}
-          </button>
+          </Field>
+
+          {erro && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-center text-sm text-red-400">
+              {erro}
+            </div>
+          )}
+
+          <Button type="submit" disabled={loading} className="w-full !py-3">
+            {loading ? <Spinner className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+            {loading ? "Entrando…" : "Entrar"}
+          </Button>
         </form>
       </div>
     </div>
