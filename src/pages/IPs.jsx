@@ -15,7 +15,7 @@ import { useCollection } from "../hooks/useCollection";
 import { classifyLogin } from "../lib/classify";
 import { exportIPsExcel } from "../lib/exports";
 import { colName, toKey, sortIP, detectarBlocos } from "../lib/ip";
-import { extrasFor, cidadeLabel } from "../lib/cities";
+import { extrasFor } from "../lib/cities";
 import { Button, Input, Select, Badge, Card, Loading, EmptyState } from "../components/ui";
 import { cn } from "../lib/cn";
 import CityTabs from "../components/ip/CityTabs";
@@ -48,7 +48,7 @@ function StatCard({ icon: Icon, label, value, color }) {
 
 export default function IPs() {
   const { user } = useAuth();
-  const { cidades } = useCities();
+  const { cidades, cidadeLabel } = useCities();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
 
