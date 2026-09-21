@@ -172,7 +172,7 @@ export default function IPs() {
         <StatCard icon={CircleSlash} label="Vagos" value={vagos} color="#f59e0b" />
         {naoCadastrados > 0 && <StatCard icon={CircleSlash} label="Não cadastrados" value={naoCadastrados} color="#94a3b8" />}
       </div>
-      {naoCadastrados > 0 && <p className="text-sm text-muted">O bloco 138.99.109.1–254 inclui endereços sem cadastro. Confirme o uso antes de atribuí-los.</p>}
+      {naoCadastrados > 0 && <p className="text-sm text-muted">Cada bloco IPv4 é listado de .0 a .255, incluindo endereços sem cadastro. Confirme o uso antes de atribuí-los.</p>}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2.5">

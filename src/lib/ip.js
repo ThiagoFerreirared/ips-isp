@@ -63,13 +63,14 @@ export function normalizeIPRecord(record, cidade) {
   return record;
 }
 
-// Completa apenas a visualização do bloco solicitado; ausência de cadastro não significa IP livre.
+// Completa os blocos IPv4 presentes na cidade, sem presumir disponibilidade.
 export function listCityIPs(data, cidade) {
   const records = data.map((r) => normalizeIPRecord(r, cidade));
-  if (toKey(cidade) === "MANAUS") {
-    const existing = new Set(records.map((r) => String(r.ip || "").trim()));
-    for (let host = 1; host <= 254; host++) {
-      const ip = "138.99.109." + host;
+  const existing = new Set(records.map((r) => String(r.ip || "").trim()));
+  const blocks = new Set([...existing].filter(isValidIP).map((ip) => ip.split(".").slice(0, 3).join(".")));
+  for (const base of blocks) {
+    for (let host = 0; host <= 255; host++) {
+      const ip = base + "." + host;
       if (!existing.has(ip)) records.push({ id: "uncatalogued:" + ip, ip, login: "Não cadastrado", virtual: true });
     }
   }
