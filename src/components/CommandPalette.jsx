@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { db } from "../firebase/config";
 import { useCities } from "../context/CitiesContext";
-import { colName } from "../lib/ip";
+import { colName, normalizeIPRecord } from "../lib/ip";
 import { classifyLogin } from "../lib/classify";
 import { Badge, Spinner } from "./ui";
 import { cn } from "../lib/cn";
@@ -46,7 +46,7 @@ export default function CommandPalette({ onClose }) {
         try {
           const snap = await getDocs(collection(db, colName(cidade)));
           snap.docs.forEach((d) => {
-            const r = d.data();
+            const r = normalizeIPRecord(d.data(), cidade);
             if (r.ip?.toLowerCase().includes(ql) || r.login?.toLowerCase().includes(ql)) {
               found.push({ id: d.id, cidade, ip: r.ip, login: r.login });
             }

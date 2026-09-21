@@ -14,7 +14,7 @@ import { useToast } from "../context/ToastContext";
 import { useCollection } from "../hooks/useCollection";
 import { classifyLogin } from "../lib/classify";
 import { exportIPsExcel } from "../lib/exports";
-import { colName, toKey, sortIP, detectarBlocos } from "../lib/ip";
+import { colName, toKey, sortIP, detectarBlocos, normalizeIPRecord } from "../lib/ip";
 import { extrasFor } from "../lib/cities";
 import { Button, Input, Select, Badge, Card, Loading, EmptyState } from "../components/ui";
 import { cn } from "../lib/cn";
@@ -69,7 +69,7 @@ export default function IPs() {
     setBusca(""); setFiltro("TODOS"); setBloco("TODOS"); setPagina(1);
   }, [cidade]);
 
-  const registros = useMemo(() => [...data].sort((a, b) => sortIP(a.ip) - sortIP(b.ip)), [data]);
+  const registros = useMemo(() => data.map((r) => normalizeIPRecord(r, cidade)).sort((a, b) => sortIP(a.ip) - sortIP(b.ip)), [data, cidade]);
   const blocos = useMemo(() => detectarBlocos(registros), [registros]);
 
   const filtrados = useMemo(
@@ -102,7 +102,7 @@ export default function IPs() {
     const editando = modal?.record;
     try {
       if (editando) {
-        const before = editando;
+        const before = data.find((r) => r.id === editando.id) || editando;
         const diff = {};
         ["ip", "login", "data", "obs", ...extras].forEach((k) => {
           if ((before[k] || "") !== (form[k] || "")) diff[k] = { de: before[k] || "", para: form[k] || "" };

@@ -4,7 +4,7 @@ import { collection, writeBatch, doc } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import { Download, FileSpreadsheet } from "lucide-react";
 import { db } from "../../firebase/config";
-import { colName } from "../../lib/ip";
+import { colName, normalizeIPRecord } from "../../lib/ip";
 import { Modal, Button, Textarea } from "../ui";
 import { useToast } from "../../context/ToastContext";
 
@@ -21,6 +21,7 @@ export default function BulkImportModal({ cidade, onClose, onDone }) {
       const parts = l.split(/[,;\t]+/);
       return { ip: parts[0]?.trim() || "", login: parts[1]?.trim() || "VAGO", data: parts[2]?.trim() || "" };
     })
+    .map((r) => normalizeIPRecord(r, cidade))
     .filter((r) => r.ip);
 
   function handleXLSX(e) {
