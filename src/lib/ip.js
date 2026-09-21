@@ -53,3 +53,12 @@ export function isValidIP(ip = "") {
   if (parts.length !== 4) return false;
   return parts.every((p) => /^\d+$/.test(p) && +p >= 0 && +p <= 255);
 }
+
+// Compatibilidade com os registros antigos de Manaus importados como Login, IP.
+// Registros corretos e pares ambíguos não são alterados.
+export function normalizeIPRecord(record, cidade) {
+  if (toKey(cidade) === "MANAUS" && !isValidIP(record.ip) && isValidIP(record.login)) {
+    return { ...record, ip: String(record.login).trim(), login: record.ip || "VAGO" };
+  }
+  return record;
+}
