@@ -10,6 +10,7 @@ export function classifyLogin(login) {
   if (!login) return "vago";
   const u = login.toUpperCase().trim();
   if (u === "" || u === "VAGO" || u === "NAN") return "vago";
+  if (u === "RESERVADO" || u.startsWith("RESERVADO ")) return "reservado";
   if (u.includes("CGNAT")) return "cgnat";
   if (EQUIP_KEYWORDS.some((k) => u.includes(k))) return "equip";
   return "cliente";
@@ -17,6 +18,7 @@ export function classifyLogin(login) {
 
 // Metadados de cada tipo: rótulo + classe de badge.
 export const TIPO_META = {
+  reservado: { label: "Reservado", badge: "badge-equip", dot: "#a78bfa" },
   vago:    { label: "Vago",        badge: "badge-vago",    dot: "#94a3b8" },
   equip:   { label: "Equipamento", badge: "badge-equip",   dot: "#818cf8" },
   cgnat:   { label: "CGNAT",       badge: "badge-cgnat",   dot: "#fb923c" },

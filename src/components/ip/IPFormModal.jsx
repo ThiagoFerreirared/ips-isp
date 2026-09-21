@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Pencil, Plus } from "lucide-react";
-import { Modal, Button, Input, Textarea, Field } from "../ui";
+import { Modal, Button, Input, Textarea, Field, Select } from "../ui";
 import { extrasFor } from "../../lib/cities";
 import { isValidIP } from "../../lib/ip";
 import { useToast } from "../../context/ToastContext";
@@ -14,6 +14,7 @@ export default function IPFormModal({ cidade, initial, seedIP = "", onClose, onS
   const [form, setForm] = useState(initial || { ip: seedIP, login: seedIP ? "" : "VAGO", data: hoje(), obs: "" });
   const [saving, setSaving] = useState(false);
 
+  const status = form.login?.toUpperCase().startsWith("RESERVADO") ? "reservado" : (!form.login || form.login.toUpperCase() === "VAGO" ? "vago" : "usado");
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit() {
@@ -51,6 +52,7 @@ export default function IPFormModal({ cidade, initial, seedIP = "", onClose, onS
             className="ip-mono"
           />
         </Field>
+        <Field label="Situação"><Select aria-label="Situação do IP" value={status} onChange={(e) => set("login", e.target.value === "reservado" ? "RESERVADO" : e.target.value === "vago" ? "VAGO" : "EM USO")}><option value="usado">Usado</option><option value="vago">Vago</option><option value="reservado">Reservado</option></Select></Field>
         <Field label="Login / Uso" hint="Deixe 'VAGO' se o IP estiver livre.">
           <Input
             placeholder="ex: Cliente João, CGNAT, OLT-CENTRO…"

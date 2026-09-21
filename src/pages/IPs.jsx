@@ -1,20 +1,19 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp,
-} from "firebase/firestore";
-import {
   Plus, Zap, Download, FileSpreadsheet, Search, Pencil, History, Trash2, Copy,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Network, CheckCircle2, CircleSlash,
 } from "lucide-react";
-import { db } from "../firebase/config";
-import { useAuth } from "../context/AuthContext";
+import { saveIP, deleteIP, migrateManaus } from "../lib/ipStore";
+import { useDocument } from "../hooks/useDocument";
+import { subnetOptions, inSubnet, expandConfiguredBlocks } from "../lib/subnets";
+import BlocksModal from "../components/ip/BlocksModal";
 import { useCities } from "../context/CitiesContext";
 import { useToast } from "../context/ToastContext";
 import { useCollection } from "../hooks/useCollection";
 import { classifyLogin } from "../lib/classify";
 import { exportIPsExcel } from "../lib/exports";
-import { colName, toKey, detectarBlocos, listCityIPs } from "../lib/ip";
+import { colName, toKey, listCityIPs, normalizeIPRecord } from "../lib/ip";
 import { extrasFor } from "../lib/cities";
 import { Button, Input, Select, Badge, Card, Loading, EmptyState } from "../components/ui";
 import { cn } from "../lib/cn";
@@ -47,7 +46,6 @@ function StatCard({ icon: Icon, label, value, color }) {
 }
 
 export default function IPs() {
-  const { user } = useAuth();
   const { cidades, cidadeLabel } = useCities();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
@@ -61,16 +59,21 @@ export default function IPs() {
 
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("TODOS");
+  const [prefix, setPrefix] = useState(24);
+  const blockConfig = useDocument("config", "blocos_" + toKey(cidade));
+  const [migrating, setMigrating] = useState(false);
   const [bloco, setBloco] = useState("TODOS");
   const [pagina, setPagina] = useState(1);
   const [modal, setModal] = useState(null); // {type, record}
 
   useEffect(() => {
-    setBusca(""); setFiltro("TODOS"); setBloco("TODOS"); setPagina(1);
+    setBusca(""); setFiltro("TODOS"); setBloco("TODOS"); setPrefix(24); setPagina(1);
   }, [cidade]);
 
-  const registros = useMemo(() => listCityIPs(data, cidade), [data, cidade]);
-  const blocos = useMemo(() => detectarBlocos(registros), [registros]);
+  const configured = blockConfig.data?.blocks;
+  const registros = useMemo(() => configured?.length ? expandConfiguredBlocks(data.map((r) => normalizeIPRecord(r, cidade)), configured) : listCityIPs(data, cidade), [data, cidade, configured]);
+  const blocos = useMemo(() => subnetOptions(registros, prefix), [registros, prefix]);
+  const needsMigration = cidade === "MANAUS" && data.some((r) => normalizeIPRecord(r, cidade) !== r);
 
   const filtrados = useMemo(
     () =>
@@ -83,8 +86,8 @@ export default function IPs() {
           r.obs?.toLowerCase().includes(txt);
         const tipo = r.virtual ? "nao_cadastrado" : classifyLogin(r.login);
         const mFiltro =
-          filtro === "TODOS" || tipo === filtro || (filtro === "USADO" && !r.virtual && tipo !== "vago");
-        const mBloco = bloco === "TODOS" || r.ip?.startsWith(bloco + ".");
+          filtro === "TODOS" || tipo === filtro || (filtro === "USADO" && !r.virtual && !["vago", "reservado"].includes(tipo));
+        const mBloco = bloco === "TODOS" || inSubnet(r.ip, bloco);
         return mBusca && mFiltro && mBloco;
       }),
     [registros, busca, filtro, bloco]
@@ -96,34 +99,15 @@ export default function IPs() {
 
   const vagos = useMemo(() => registros.filter((r) => !r.virtual && classifyLogin(r.login) === "vago").length, [registros]);
   const naoCadastrados = registros.filter((r) => r.virtual).length;
-  const usados = registros.length - vagos - naoCadastrados;
+  const reservados = registros.filter((r) => !r.virtual && classifyLogin(r.login) === "reservado").length;
+  const usados = registros.length - vagos - naoCadastrados - reservados;
 
   /* ───────── ações ───────── */
   async function salvar(form) {
     const editando = modal?.record;
     try {
-      if (editando && !editando.virtual) {
-        const before = data.find((r) => r.id === editando.id) || editando;
-        const diff = {};
-        ["ip", "login", "data", "obs", ...extras].forEach((k) => {
-          if ((before[k] || "") !== (form[k] || "")) diff[k] = { de: before[k] || "", para: form[k] || "" };
-        });
-        await updateDoc(doc(db, colKey, editando.id), form);
-        if (Object.keys(diff).length) {
-          await addDoc(collection(db, "historico"), {
-            ip: form.ip, cidade: toKey(cidade), acao: "Edição", diff,
-            usuario: user?.email || "desconhecido", timestamp: serverTimestamp(),
-          });
-        }
-        toast.success("Registro atualizado.");
-      } else {
-        await addDoc(collection(db, colKey), form);
-        await addDoc(collection(db, "historico"), {
-          ip: form.ip, cidade: toKey(cidade), acao: "Criação", diff: {},
-          usuario: user?.email || "desconhecido", timestamp: serverTimestamp(),
-        });
-        toast.success("IP adicionado.");
-      }
+      await saveIP(cidade, form, editando && !editando.virtual ? editando.id : null);
+      toast.success("Registro salvo.");
       setModal(null);
     } catch (e) {
       toast.error("Erro: " + e.message);
@@ -139,15 +123,19 @@ export default function IPs() {
     });
     if (!ok) return;
     try {
-      await deleteDoc(doc(db, colKey, r.id));
-      await addDoc(collection(db, "historico"), {
-        ip: r.ip, cidade: toKey(cidade), acao: "Exclusão", diff: {},
-        usuario: user?.email || "desconhecido", timestamp: serverTimestamp(),
-      });
+      await deleteIP(cidade, r.id);
       toast.success("IP excluído.");
     } catch (e) {
       toast.error("Erro: " + e.message);
     }
+  }
+
+  async function corrigirManaus() {
+    if (migrating) return;
+    setMigrating(true);
+    try { const count = await migrateManaus(); toast.success(count + " registros corrigidos com backup e histórico."); }
+    catch (error) { toast.error("Correção interrompida: " + error.message); }
+    finally { setMigrating(false); }
   }
 
   function copiar(ip) {
@@ -166,13 +154,16 @@ export default function IPs() {
 
       <CityTabs cidade={cidade} onSelect={setCidade} />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <StatCard icon={Network} label="Total listado" value={registros.length} color="#38bdf8" />
         <StatCard icon={CheckCircle2} label="Usados" value={usados} color="#22c55e" />
         <StatCard icon={CircleSlash} label="Vagos" value={vagos} color="#f59e0b" />
+        <StatCard icon={CircleSlash} label="Reservados" value={reservados} color="#a78bfa" />
         {naoCadastrados > 0 && <StatCard icon={CircleSlash} label="Não cadastrados" value={naoCadastrados} color="#94a3b8" />}
       </div>
-      {naoCadastrados > 0 && <p className="text-sm text-muted">Cada bloco IPv4 é listado de .0 a .255, incluindo endereços sem cadastro. Confirme o uso antes de atribuí-los.</p>}
+      {naoCadastrados > 0 && <p className="text-sm text-muted">A lista inclui os blocos configurados ou blocos /24 detectados, com endereços sem cadastro. Confirme o uso antes de atribuí-los.</p>}
+
+      {needsMigration && <div className="card flex flex-wrap items-center gap-3 p-3 text-sm"><span className="flex-1">Há registros antigos com IP e login invertidos. A correção salva os originais no backup e registra o histórico.</span><Button size="sm" onClick={corrigirManaus} disabled={migrating}>{migrating ? "Corrigindo…" : "Corrigir Manaus com backup"}</Button></div>}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2.5">
@@ -189,6 +180,7 @@ export default function IPs() {
         <Select value={filtro} onChange={(e) => { setFiltro(e.target.value); setPagina(1); }} className="w-auto">
           <option value="TODOS">Todos</option>
           <option value="vago">Vagos</option>
+          <option value="reservado">Reservados</option>
           {naoCadastrados > 0 && <option value="nao_cadastrado">Não cadastrados</option>}
           <option value="USADO">Usados</option>
           <option value="equip">Equipamentos</option>
@@ -196,25 +188,26 @@ export default function IPs() {
           <option value="cliente">Clientes</option>
         </Select>
 
-        {blocos.length > 2 && (
-          <Select value={bloco} onChange={(e) => { setBloco(e.target.value); setPagina(1); }} className="w-auto">
-            {blocos.map((b) => (
-              <option key={b} value={b}>{b === "TODOS" ? "Todos os blocos" : b + ".0/24"}</option>
-            ))}
-          </Select>
-        )}
+        <Select aria-label="Máscara do filtro" value={prefix} onChange={(e) => { setPrefix(Number(e.target.value)); setBloco("TODOS"); setPagina(1); }} className="w-auto">
+          {[24,25,26,27,28,29,30,31,32].map((p) => <option key={p} value={p}>Máscara /{p}</option>)}
+        </Select>
+        <Select aria-label="Sub-rede" value={bloco} onChange={(e) => { setBloco(e.target.value); setPagina(1); }} className="w-auto">
+          <option value="TODOS">Todas as sub-redes</option>
+          {blocos.map((b) => <option key={b} value={b}>{b}</option>)}
+        </Select>
 
         <div className="ml-auto flex flex-wrap gap-2">
+          <Button size="sm" variant="soft" onClick={() => setModal({ type: "blocks" })}>Blocos da cidade</Button>
           <Button size="sm" onClick={() => setModal({ type: "form", record: null })}><Plus className="h-4 w-4" /> Novo IP</Button>
           <Button size="sm" variant="success" onClick={() => setModal({ type: "gen" })}><Zap className="h-4 w-4" /> Gerar bloco</Button>
           <Button size="sm" variant="purple" onClick={() => setModal({ type: "bulk" })}><Download className="h-4 w-4" /> Importar</Button>
-          <Button size="sm" variant="soft" onClick={() => exportIPsExcel(registros, cidade, extras)}><FileSpreadsheet className="h-4 w-4" /> Excel</Button>
+          <Button size="sm" variant="soft" onClick={() => exportIPsExcel(filtrados, cidade, extras)}><FileSpreadsheet className="h-4 w-4" /> Excel</Button>
         </div>
       </div>
 
       {/* Tabela */}
       <Card className="overflow-hidden">
-        {loading ? (
+        {loading || blockConfig.loading ? (
           <Loading />
         ) : slice.length === 0 ? (
           <EmptyState
@@ -306,11 +299,12 @@ export default function IPs() {
       )}
 
       {/* Modais */}
+      {modal?.type === "blocks" && <BlocksModal cidade={cidade} blocks={configured} onClose={() => setModal(null)} />}
       {modal?.type === "form" && (
         <IPFormModal cidade={cidade} initial={modal.record?.virtual ? null : modal.record} seedIP={modal.record?.virtual ? modal.record.ip : ""} onClose={() => setModal(null)} onSave={salvar} />
       )}
       {modal?.type === "bulk" && (
-        <BulkImportModal cidade={cidade} onClose={() => setModal(null)} onDone={() => {}} />
+        <BulkImportModal cidade={cidade} existing={data} onClose={() => setModal(null)} onDone={() => {}} />
       )}
       {modal?.type === "gen" && (
         <GenerateBlockModal cidade={cidade} onClose={() => setModal(null)} onDone={() => {}} />

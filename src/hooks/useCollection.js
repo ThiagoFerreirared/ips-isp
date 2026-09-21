@@ -8,20 +8,20 @@ export function useCollection(path) {
 
   useEffect(() => {
     if (!path) {
-      setState({ data: [], loading: false });
+      setState({ path, data: [], loading: false });
       return;
     }
     setState((s) => ({ ...s, loading: true }));
     const unsub = onSnapshot(
       collection(db, path),
-      (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false }),
+      (snap) => setState({ path, data: snap.docs.map((d) => ({ ...d.data(), id: d.id })), loading: false }),
       (err) => {
         console.error("useCollection", path, err);
-        setState({ data: [], loading: false });
+        setState({ path, data: [], loading: false });
       }
     );
     return unsub;
   }, [path]);
 
-  return state;
+  return state.path === path ? state : { data: [], loading: !!path };
 }
