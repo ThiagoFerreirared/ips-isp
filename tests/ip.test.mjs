@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../src/lib/ip.js", import.meta.url), "utf8");
-const { normalizeIPRecord, sortIP, detectarBlocos } = await import(
+const { normalizeIPRecord, sortIP, detectarBlocos, listCityIPs } = await import(
   "data:text/javascript;base64," + Buffer.from(source).toString("base64")
 );
 
@@ -38,4 +38,26 @@ test("ordena numericamente antes da paginação e identifica blocos", () => {
   assert.deepEqual(records.map(r => r.ip),
     ["138.99.109.2", "138.99.109.19", "138.99.109.202", "138.99.109.213", "138.99.110.1"]);
   assert.deepEqual(detectarBlocos(records), ["TODOS", "138.99.109", "138.99.110"]);
+});
+
+test("completa Manaus desde .1 sem duplicar registros nem presumir disponibilidade", () => {
+  const data = [{id:"saved", ip:"cliente", login:"138.99.109.16"}, {id:"free", ip:"138.99.109.2", login:"VAGO"}, {id:"other", ip:"10.0.0.1", login:"equipamento"}];
+  const rows = listCityIPs(data,"MANAUS");
+  assert.equal(rows.length,255);
+  assert.deepEqual(rows.filter(r=>r.ip.startsWith("138.99.109.")).slice(0,4).map(r=>r.ip),["138.99.109.1","138.99.109.2","138.99.109.3","138.99.109.4"]);
+  assert.equal(rows.filter(r=>r.ip==="138.99.109.16").length,1);
+  assert.equal(rows.find(r=>r.ip==="138.99.109.16").id,"saved");
+  assert.equal(rows.find(r=>r.ip==="138.99.109.2").virtual,undefined);
+  assert.equal(rows.find(r=>r.ip==="138.99.109.1").login,"Não cadastrado");
+  assert.equal(rows.filter(r=>r.virtual).length,252);
+  assert.equal(rows.some(r=>r.ip==="138.99.109.0" || r.ip==="138.99.109.255"),false);
+  assert.equal(data.length,3);
+});
+
+test("não completa outras cidades e substitui a linha virtual ao cadastrar", () => {
+  assert.equal(listCityIPs([],"SANTAREM").length,0);
+  const rows=listCityIPs([{id:"new",ip:"138.99.109.1",login:"cliente"}],"MANAUS");
+  assert.equal(rows.length,254);
+  assert.equal(rows[0].id,"new");
+  assert.equal(rows[0].virtual,undefined);
 });

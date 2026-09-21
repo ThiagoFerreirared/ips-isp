@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { collection, getDocs, writeBatch, doc } from "firebase/firestore";
 import { Zap } from "lucide-react";
 import { db } from "../../firebase/config";
-import { colName, generateIPs } from "../../lib/ip";
+import { colName, generateIPs, normalizeIPRecord } from "../../lib/ip";
 import { Modal, Button, Field, Input } from "../ui";
 import { useToast } from "../../context/ToastContext";
 
@@ -28,7 +28,7 @@ export default function GenerateBlockModal({ cidade, onClose, onDone }) {
     try {
       const col = collection(db, colName(cidade));
       const snap = await getDocs(col);
-      const existentes = new Set(snap.docs.map((d) => d.data().ip));
+      const existentes = new Set(snap.docs.map((d) => normalizeIPRecord(d.data(), cidade).ip));
       const novos = preview.filter((ip) => !existentes.has(ip));
 
       for (let i = 0; i < novos.length; i += 450) {
