@@ -8,20 +8,20 @@ export function useDocument(col, id) {
 
   useEffect(() => {
     if (!col || !id) {
-      setState({ data: null, loading: false, exists: false });
+      setState({ key: col + "/" + id, data: null, loading: false, exists: false });
       return;
     }
     setState((s) => ({ ...s, loading: true }));
     const unsub = onSnapshot(
       doc(db, col, id),
-      (snap) => setState({ data: snap.exists() ? snap.data() : null, loading: false, exists: snap.exists() }),
+      (snap) => setState({ key: col + "/" + id, data: snap.exists() ? snap.data() : null, loading: false, exists: snap.exists() }),
       (err) => {
         console.error("useDocument", col, id, err);
-        setState({ data: null, loading: false, exists: false });
+        setState({ key: col + "/" + id, data: null, loading: false, exists: false });
       }
     );
     return unsub;
   }, [col, id]);
 
-  return state;
+  return state.key === col + "/" + id ? state : { data: null, loading: !!(col && id), exists: false };
 }

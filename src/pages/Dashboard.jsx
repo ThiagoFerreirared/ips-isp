@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { collection, getCountFromServer, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import {
   Network, CheckCircle2, CircleSlash, MapPin, Share2, RefreshCw, ArrowRight, CalendarClock,
 } from "lucide-react";
 import { db } from "../firebase/config";
 import { useCities } from "../context/CitiesContext";
 import { useCollection } from "../hooks/useCollection";
-import { colName } from "../lib/ip";
+import { classifyLogin } from "../lib/classify";
+import { colName, normalizeIPRecord } from "../lib/ip";
 import { Card, Button, Loading, EmptyState } from "../components/ui";
 import { Donut, CityBars } from "../components/charts";
 
@@ -47,13 +48,13 @@ export default function Dashboard() {
       cidades.map(async (c) => {
         try {
           const col = collection(db, colName(c));
-          const [t, v] = await Promise.all([
-            getCountFromServer(col),
-            getCountFromServer(query(col, where("login", "==", "VAGO"))),
-          ]);
-          return { cidade: c, total: t.data().count, vagos: v.data().count };
+          const snap = await getDocs(col);
+          const records = snap.docs.map((d) => normalizeIPRecord(d.data(), c));
+          const vagos = records.filter((r) => classifyLogin(r.login) === "vago").length;
+          const reservados = records.filter((r) => classifyLogin(r.login) === "reservado").length;
+          return { cidade: c, total: records.length, vagos, reservados };
         } catch {
-          return { cidade: c, total: 0, vagos: 0 };
+          return { cidade: c, total: 0, vagos: 0, reservados: 0 };
         }
       })
     );
@@ -66,7 +67,8 @@ export default function Dashboard() {
   const totals = useMemo(() => {
     const total = rows.reduce((a, r) => a + r.total, 0);
     const vagos = rows.reduce((a, r) => a + r.vagos, 0);
-    return { total, vagos, usados: total - vagos };
+    const reservados = rows.reduce((a, r) => a + (r.reservados || 0), 0);
+    return { total, vagos, reservados, usados: total - vagos - reservados };
   }, [rows]);
 
   const topCidades = useMemo(() => [...rows].sort((a, b) => b.total - a.total).slice(0, 8), [rows]);
@@ -95,10 +97,11 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <KpiCard icon={Network} label="Total de IPs" value={loading ? "…" : totals.total} color="#38bdf8" to="/ips" />
         <KpiCard icon={CheckCircle2} label="Usados" value={loading ? "…" : totals.usados} color="#22c55e" />
         <KpiCard icon={CircleSlash} label="Vagos" value={loading ? "…" : totals.vagos} color="#f59e0b" />
+        <KpiCard icon={CircleSlash} label="Reservados" value={loading ? "…" : totals.reservados} color="#a78bfa" />
         <KpiCard icon={MapPin} label="Cidades" value={cidades.length} color="#a78bfa" to="/ips" />
         <KpiCard icon={Share2} label="Links" value={links.loading ? "…" : links.data.length} color="#f472b6" to="/relatorio" />
       </div>
@@ -111,7 +114,7 @@ export default function Dashboard() {
             <Loading />
           ) : (
             <>
-              <Donut used={totals.usados} vagos={totals.vagos} />
+              <Donut used={totals.usados} vagos={totals.vagos} reservados={totals.reservados} />
               <div className="flex gap-5 text-sm">
                 <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-primary" /> Usados <b className="text-text">{totals.usados}</b></span>
                 <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-amber-500/70" /> Vagos <b className="text-text">{totals.vagos}</b></span>

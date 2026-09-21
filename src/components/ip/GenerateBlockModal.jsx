@@ -1,9 +1,8 @@
 import { useCities } from "../../context/CitiesContext";
 import React, { useState } from "react";
-import { collection, getDocs, writeBatch, doc } from "firebase/firestore";
+import { importIPs } from "../../lib/ipStore";
 import { Zap } from "lucide-react";
-import { db } from "../../firebase/config";
-import { colName, generateIPs, normalizeIPRecord } from "../../lib/ip";
+import { generateIPs, isValidIP } from "../../lib/ip";
 import { Modal, Button, Field, Input } from "../ui";
 import { useToast } from "../../context/ToastContext";
 
@@ -16,28 +15,20 @@ export default function GenerateBlockModal({ cidade, onClose, onDone }) {
 
   const preview = (() => {
     try {
-      return base.trim() ? generateIPs(base.trim(), [ranges]) : [];
+      const parts = ranges.split(",").map((r) => r.trim());
+      if (!isValidIP(base.trim() + ".0") || parts.some((r) => !/^\d{1,3}(-\d{1,3})?$/.test(r) || r.split("-").some((n) => +n > 255) || (r.includes("-") && +r.split("-")[0] > +r.split("-")[1]))) return [];
+      return [...new Set(generateIPs(base.trim(), parts))];
     } catch {
       return [];
     }
   })();
 
   async function gerar() {
-    if (!preview.length) return;
+    if (loading || !preview.length) return;
     setLoading(true);
     try {
-      const col = collection(db, colName(cidade));
-      const snap = await getDocs(col);
-      const existentes = new Set(snap.docs.map((d) => normalizeIPRecord(d.data(), cidade).ip));
-      const novos = preview.filter((ip) => !existentes.has(ip));
-
-      for (let i = 0; i < novos.length; i += 450) {
-        const batch = writeBatch(db);
-        novos.slice(i, i + 450).forEach((ip) => batch.set(doc(col), { ip, login: "VAGO", data: "" }));
-        await batch.commit();
-      }
-
-      toast.success(`${novos.length} IPs gerados${preview.length - novos.length ? ` (${preview.length - novos.length} já existiam)` : ""}.`);
+      const result = await importIPs(cidade, preview.map((ip) => ({ ip, login: "VAGO", data: "" })));
+      toast.success(result.added + " IPs gerados; " + result.skipped + " existentes ignorados.");
       onDone();
       onClose();
     } catch (e) {
@@ -51,10 +42,10 @@ export default function GenerateBlockModal({ cidade, onClose, onDone }) {
     <Modal
       title={`Gerar bloco — ${cidadeLabel(cidade)}`}
       icon={Zap}
-      onClose={onClose}
+      onClose={() => { if (!loading) onClose(); }}
       footer={
         <>
-          <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button variant="ghost" size="sm" disabled={loading} onClick={onClose}>Cancelar</Button>
           <Button variant="success" size="sm" onClick={gerar} disabled={loading || !preview.length}>
             {loading ? "Gerando…" : `Gerar ${preview.length} IPs`}
           </Button>

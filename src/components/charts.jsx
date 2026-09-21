@@ -2,8 +2,8 @@ import React from "react";
 import { useCities } from "../context/CitiesContext";
 
 // Anel de ocupação (usados vs vagos).
-export function Donut({ used = 0, vagos = 0, size = 168, stroke = 18 }) {
-  const total = used + vagos;
+export function Donut({ used = 0, vagos = 0, reservados = 0, size = 168, stroke = 18 }) {
+  const total = used + vagos + reservados;
   const pct = total ? used / total : 0;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
@@ -41,17 +41,18 @@ export function CityBars({ rows }) {
   return (
     <div className="space-y-3">
       {rows.map((r) => {
-        const usados = r.total - r.vagos;
+        const usados = r.total - r.vagos - (r.reservados || 0);
         return (
           <div key={r.cidade}>
             <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
               <span className="truncate font-medium text-text-soft">{cidadeLabel(r.cidade)}</span>
               <span className="shrink-0 text-muted">
-                <span className="font-semibold text-text">{r.total}</span> · {r.vagos} vagos
+                <span className="font-semibold text-text">{r.total}</span> · {r.vagos} vagos · {r.reservados || 0} reservados
               </span>
             </div>
             <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-3" style={{ width: `${Math.max(6, (r.total / max) * 100)}%` }}>
               <div className="h-full bg-primary" style={{ width: `${r.total ? (usados / r.total) * 100 : 0}%` }} />
+              <div className="h-full bg-purple-500/70" style={{ width: `${r.total ? ((r.reservados || 0) / r.total) * 100 : 0}%` }} />
               <div className="h-full bg-amber-500/70" style={{ width: `${r.total ? (r.vagos / r.total) * 100 : 0}%` }} />
             </div>
           </div>

@@ -62,3 +62,14 @@ src/
   components/  ui.jsx, charts.jsx, CommandPalette, layout/, ip/
   pages/       Dashboard, IPs, RelatorioLinks, HistoricoEventos, Login
 ```
+
+## Gestão de IPs e sub-redes
+
+- Selecione a máscara (/24 a /32, incluindo /28, /29 e /30) e depois a sub-rede. A exportação Excel respeita os filtros.
+- Em **Blocos da cidade**, informe um CIDR por linha (até 100 blocos). Endereços fora dos blocos já cadastrados continuam visíveis. Sem configuração, a listagem detecta blocos /24 como antes.
+- Use **Reservado** na situação do IP para separá-lo dos usados e vagos; endereços sem registro continuam como **Não cadastrado**.
+- A importação reconhece as colunas IP, Login e Data pelo cabeçalho, mostra avisos, ignora duplicados e bloqueia IP inválido.
+- Salvamento, exclusão, geração e importação usam uma revisão por cidade para serializar gravações feitas por esta versão do aplicativo. Clientes antigos ou alterações externas ao aplicativo não participam desse controle; a garantia não substitui regras de validação do servidor.
+- A correção de Manaus preserva os IDs e salva cada original em **ip_backups**, junto com auditoria em **historico**, na mesma transação da correção. O botão só aparece se houver registros invertidos.
+- Configurações: **config/blocos_<CIDADE>** (blocks) e **config/ip_revision_<CIDADE>** (version).
+- Testes: **npm test**. Os testes de persistência simulam Firestore, incluindo concorrência e falha de backup.
