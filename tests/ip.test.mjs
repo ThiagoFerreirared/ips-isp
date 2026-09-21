@@ -43,21 +43,39 @@ test("ordena numericamente antes da paginação e identifica blocos", () => {
 test("completa Manaus desde .1 sem duplicar registros nem presumir disponibilidade", () => {
   const data = [{id:"saved", ip:"cliente", login:"138.99.109.16"}, {id:"free", ip:"138.99.109.2", login:"VAGO"}, {id:"other", ip:"10.0.0.1", login:"equipamento"}];
   const rows = listCityIPs(data,"MANAUS");
-  assert.equal(rows.length,255);
-  assert.deepEqual(rows.filter(r=>r.ip.startsWith("138.99.109.")).slice(0,4).map(r=>r.ip),["138.99.109.1","138.99.109.2","138.99.109.3","138.99.109.4"]);
+  assert.equal(rows.length,512);
+  assert.deepEqual(rows.filter(r=>r.ip.startsWith("138.99.109.")).slice(0,5).map(r=>r.ip),["138.99.109.0","138.99.109.1","138.99.109.2","138.99.109.3","138.99.109.4"]);
   assert.equal(rows.filter(r=>r.ip==="138.99.109.16").length,1);
   assert.equal(rows.find(r=>r.ip==="138.99.109.16").id,"saved");
   assert.equal(rows.find(r=>r.ip==="138.99.109.2").virtual,undefined);
   assert.equal(rows.find(r=>r.ip==="138.99.109.1").login,"Não cadastrado");
-  assert.equal(rows.filter(r=>r.virtual).length,252);
-  assert.equal(rows.some(r=>r.ip==="138.99.109.0" || r.ip==="138.99.109.255"),false);
+  assert.equal(rows.filter(r=>r.virtual).length,509);
+  assert.equal(rows.some(r=>r.ip==="138.99.109.0" || r.ip==="138.99.109.255"),true);
   assert.equal(data.length,3);
 });
 
-test("não completa outras cidades e substitui a linha virtual ao cadastrar", () => {
+test("não inventa blocos sem dados e substitui a linha virtual ao cadastrar", () => {
   assert.equal(listCityIPs([],"SANTAREM").length,0);
   const rows=listCityIPs([{id:"new",ip:"138.99.109.1",login:"cliente"}],"MANAUS");
-  assert.equal(rows.length,254);
-  assert.equal(rows[0].id,"new");
-  assert.equal(rows[0].virtual,undefined);
+  assert.equal(rows.length,256);
+  assert.equal(rows[1].id,"new");
+  assert.equal(rows[1].virtual,undefined);
+});
+
+test("completa múltiplos blocos em qualquer cidade, preservando .0 e .255 cadastrados", () => {
+ for (const cidade of ["SANTAREM","ITAITUBA","RUROPOLIS","NOVA_CIDADE"]) {
+  const data=[{id:"zero",ip:"10.0.1.0",login:"rede"},{id:"last",ip:"10.0.1.255",login:"reservado"},{id:"second",ip:"10.0.2.9",login:"cliente"}];
+  const rows=listCityIPs(data,cidade);
+  assert.equal(rows.length,512);
+  assert.equal(rows[0].id,"zero");
+  assert.equal(rows[255].id,"last");
+  assert.equal(rows[256].ip,"10.0.2.0");
+  assert.equal(rows[511].ip,"10.0.2.255");
+  assert.equal(new Set(rows.map(r=>r.ip)).size,512);
+ }
+});
+
+test("não expande IPv6 ou endereços inválidos",()=>{
+ const records=[{ip:"2001:db8::1",login:"cliente"},{ip:"999.1.1.1",login:"cliente"}];
+ assert.equal(listCityIPs(records,"IPV6_WSP").length,2);
 });
