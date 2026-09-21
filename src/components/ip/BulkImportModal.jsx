@@ -1,3 +1,4 @@
+import { useCities } from "../../context/CitiesContext";
 import React, { useState, useRef } from "react";
 import { collection, writeBatch, doc } from "firebase/firestore";
 import * as XLSX from "xlsx";
@@ -8,6 +9,7 @@ import { Modal, Button, Textarea } from "../ui";
 import { useToast } from "../../context/ToastContext";
 
 export default function BulkImportModal({ cidade, onClose, onDone }) {
+  const { cidadeLabel } = useCities();
   const toast = useToast();
   const [texto, setTexto] = useState("");
   const [loading, setLoading] = useState(false);
@@ -62,7 +64,7 @@ export default function BulkImportModal({ cidade, onClose, onDone }) {
   return (
     <Modal
       size="lg"
-      title={`Importar lista — ${cidade.replace(/_/g, " ")}`}
+      title={`Importar lista — ${cidadeLabel(cidade)}`}
       icon={Download}
       onClose={onClose}
       footer={

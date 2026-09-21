@@ -8,7 +8,6 @@ import { db } from "../firebase/config";
 import { useCities } from "../context/CitiesContext";
 import { useCollection } from "../hooks/useCollection";
 import { colName } from "../lib/ip";
-import { cidadeLabel } from "../lib/cities";
 import { Card, Button, Loading, EmptyState } from "../components/ui";
 import { Donut, CityBars } from "../components/charts";
 

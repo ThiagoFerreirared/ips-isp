@@ -1,3 +1,4 @@
+import { useCities } from "../../context/CitiesContext";
 import React, { useState } from "react";
 import { collection, getDocs, writeBatch, doc } from "firebase/firestore";
 import { Zap } from "lucide-react";
@@ -7,6 +8,7 @@ import { Modal, Button, Field, Input } from "../ui";
 import { useToast } from "../../context/ToastContext";
 
 export default function GenerateBlockModal({ cidade, onClose, onDone }) {
+  const { cidadeLabel } = useCities();
   const toast = useToast();
   const [base, setBase] = useState("");
   const [ranges, setRanges] = useState("0-255");
@@ -47,7 +49,7 @@ export default function GenerateBlockModal({ cidade, onClose, onDone }) {
 
   return (
     <Modal
-      title={`Gerar bloco — ${cidade.replace(/_/g, " ")}`}
+      title={`Gerar bloco — ${cidadeLabel(cidade)}`}
       icon={Zap}
       onClose={onClose}
       footer={

@@ -7,7 +7,6 @@ import {
 import { db } from "../firebase/config";
 import { useCities } from "../context/CitiesContext";
 import { colName } from "../lib/ip";
-import { cidadeLabel } from "../lib/cities";
 import { classifyLogin } from "../lib/classify";
 import { Badge, Spinner } from "./ui";
 import { cn } from "../lib/cn";
@@ -19,7 +18,7 @@ const NAV = [
 ];
 
 export default function CommandPalette({ onClose }) {
-  const { cidades } = useCities();
+  const { cidades, cidadeLabel } = useCities();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [ipResults, setIpResults] = useState([]);
@@ -69,7 +68,7 @@ export default function CommandPalette({ onClose }) {
   }));
 
   const cityItems = cidades
-    .filter((c) => !ql || c.toLowerCase().includes(ql))
+    .filter((c) => !ql || cidadeLabel(c).toLowerCase().includes(ql))
     .slice(0, 8)
     .map((c) => ({
       type: "city",

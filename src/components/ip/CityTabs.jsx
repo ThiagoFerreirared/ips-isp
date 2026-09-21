@@ -1,23 +1,23 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, X, MapPin } from "lucide-react";
+import { Plus, X, MapPin, Pencil } from "lucide-react";
 import { useCities } from "../../context/CitiesContext";
 import { useToast } from "../../context/ToastContext";
-import { cidadeLabel } from "../../lib/cities";
 import { Modal, Button, Input, Field } from "../ui";
 import { cn } from "../../lib/cn";
 
-function AddCityModal({ onClose }) {
-  const { addCidade } = useCities();
+function CityNameModal({ cityKey, onClose }) {
+  const { addCidade, renameCidade, cidadeLabel } = useCities();
   const toast = useToast();
-  const [nome, setNome] = useState("");
+  const [nome, setNome] = useState(cityKey ? cidadeLabel(cityKey) : "");
   const [saving, setSaving] = useState(false);
 
   async function submit() {
-    if (!nome.trim()) return;
+    if (saving || !nome.trim()) return;
     setSaving(true);
     try {
-      const key = await addCidade(nome);
-      toast.success(`Aba "${cidadeLabel(key)}" criada.`);
+      const key = cityKey || await addCidade(nome);
+      if (cityKey) await renameCidade(cityKey, nome);
+      toast.success(cityKey ? "Nome da cidade atualizado." : "Cidade criada.");
       onClose(key);
     } catch (e) {
       toast.error(e.message);
@@ -28,18 +28,19 @@ function AddCityModal({ onClose }) {
   return (
     <Modal
       size="sm"
-      title="Nova cidade / aba"
+      title={cityKey ? "Editar nome da cidade" : "Nova cidade / aba"}
       icon={MapPin}
-      onClose={() => onClose()}
+      onClose={() => { if (!saving) onClose(); }}
       footer={
         <>
-          <Button variant="ghost" size="sm" onClick={() => onClose()}>Cancelar</Button>
-          <Button size="sm" onClick={submit} disabled={saving || !nome.trim()}>Criar</Button>
+          <Button variant="ghost" size="sm" disabled={saving} onClick={() => onClose()}>Cancelar</Button>
+          <Button size="sm" onClick={submit} disabled={saving || !nome.trim()}>{saving ? "Salvando…" : cityKey ? "Salvar" : "Criar"}</Button>
         </>
       }
     >
-      <Field label="Nome da aba" hint="Espaços viram _ e tudo fica em maiúsculas.">
+      <Field label="Nome da aba" hint={cityKey ? undefined : "Espaços viram _ e tudo fica em maiúsculas."}>
         <Input
+          disabled={saving}
           autoFocus
           placeholder="ex: NOVO_SITE"
           value={nome}
@@ -52,10 +53,11 @@ function AddCityModal({ onClose }) {
 }
 
 export default function CityTabs({ cidade, onSelect }) {
-  const { cidades, removeCidade, saveOrder } = useCities();
+  const { cidades, cidadeLabel, removeCidade, saveOrder } = useCities();
   const toast = useToast();
   const [order, setOrder] = useState(cidades);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(null);
   const dragFrom = useRef(null);
 
   useEffect(() => setOrder(cidades), [cidades]);
@@ -122,6 +124,15 @@ export default function CityTabs({ cidade, onSelect }) {
               {cidadeLabel(c)}
             </button>
             <button
+              type="button"
+              onClick={() => setEditing(c)}
+              title="Editar nome"
+              aria-label={`Editar nome de ${cidadeLabel(c)}`}
+              className="mr-1 grid h-7 w-7 place-items-center rounded text-muted transition hover:bg-primary/15 hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
               onClick={(e) => { e.stopPropagation(); del(c); }}
               title="Deletar"
               className="mr-1.5 grid h-5 w-5 place-items-center rounded text-muted opacity-0 transition hover:bg-red-500/15 hover:text-red-500 group-hover:opacity-100"
@@ -139,8 +150,9 @@ export default function CityTabs({ cidade, onSelect }) {
         <Plus className="h-4 w-4" /> Nova
       </button>
 
+      {editing && <CityNameModal cityKey={editing} onClose={() => setEditing(null)} />}
       {adding && (
-        <AddCityModal
+        <CityNameModal
           onClose={(key) => {
             setAdding(false);
             if (key) onSelect(key);

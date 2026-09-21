@@ -1,5 +1,5 @@
 import React from "react";
-import { cidadeLabel } from "../lib/cities";
+import { useCities } from "../context/CitiesContext";
 
 // Anel de ocupação (usados vs vagos).
 export function Donut({ used = 0, vagos = 0, size = 168, stroke = 18 }) {
@@ -36,6 +36,7 @@ export function Donut({ used = 0, vagos = 0, size = 168, stroke = 18 }) {
 
 // Lista de barras empilhadas (usados/vagos) por cidade.
 export function CityBars({ rows }) {
+  const { cidadeLabel } = useCities();
   const max = Math.max(1, ...rows.map((r) => r.total));
   return (
     <div className="space-y-3">
