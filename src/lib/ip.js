@@ -62,3 +62,16 @@ export function normalizeIPRecord(record, cidade) {
   }
   return record;
 }
+
+// Completa apenas a visualização do bloco solicitado; ausência de cadastro não significa IP livre.
+export function listCityIPs(data, cidade) {
+  const records = data.map((r) => normalizeIPRecord(r, cidade));
+  if (toKey(cidade) === "MANAUS") {
+    const existing = new Set(records.map((r) => String(r.ip || "").trim()));
+    for (let host = 1; host <= 254; host++) {
+      const ip = "138.99.109." + host;
+      if (!existing.has(ip)) records.push({ id: "uncatalogued:" + ip, ip, login: "Não cadastrado", virtual: true });
+    }
+  }
+  return records.sort((a, b) => sortIP(a.ip) - sortIP(b.ip));
+}

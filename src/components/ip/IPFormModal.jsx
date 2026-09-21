@@ -7,11 +7,11 @@ import { useToast } from "../../context/ToastContext";
 
 const hoje = () => new Date().toLocaleDateString("pt-BR");
 
-export default function IPFormModal({ cidade, initial, onClose, onSave }) {
+export default function IPFormModal({ cidade, initial, seedIP = "", onClose, onSave }) {
   const toast = useToast();
   const editando = !!initial;
   const extras = extrasFor(cidade);
-  const [form, setForm] = useState(initial || { ip: "", login: "VAGO", data: hoje(), obs: "" });
+  const [form, setForm] = useState(initial || { ip: seedIP, login: seedIP ? "" : "VAGO", data: hoje(), obs: "" });
   const [saving, setSaving] = useState(false);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));

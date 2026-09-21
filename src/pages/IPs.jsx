@@ -14,7 +14,7 @@ import { useToast } from "../context/ToastContext";
 import { useCollection } from "../hooks/useCollection";
 import { classifyLogin } from "../lib/classify";
 import { exportIPsExcel } from "../lib/exports";
-import { colName, toKey, sortIP, detectarBlocos, normalizeIPRecord } from "../lib/ip";
+import { colName, toKey, detectarBlocos, listCityIPs } from "../lib/ip";
 import { extrasFor } from "../lib/cities";
 import { Button, Input, Select, Badge, Card, Loading, EmptyState } from "../components/ui";
 import { cn } from "../lib/cn";
@@ -69,7 +69,7 @@ export default function IPs() {
     setBusca(""); setFiltro("TODOS"); setBloco("TODOS"); setPagina(1);
   }, [cidade]);
 
-  const registros = useMemo(() => data.map((r) => normalizeIPRecord(r, cidade)).sort((a, b) => sortIP(a.ip) - sortIP(b.ip)), [data, cidade]);
+  const registros = useMemo(() => listCityIPs(data, cidade), [data, cidade]);
   const blocos = useMemo(() => detectarBlocos(registros), [registros]);
 
   const filtrados = useMemo(
@@ -81,9 +81,9 @@ export default function IPs() {
           r.ip?.toLowerCase().includes(txt) ||
           r.login?.toLowerCase().includes(txt) ||
           r.obs?.toLowerCase().includes(txt);
-        const tipo = classifyLogin(r.login);
+        const tipo = r.virtual ? "nao_cadastrado" : classifyLogin(r.login);
         const mFiltro =
-          filtro === "TODOS" || tipo === filtro || (filtro === "USADO" && tipo !== "vago");
+          filtro === "TODOS" || tipo === filtro || (filtro === "USADO" && !r.virtual && tipo !== "vago");
         const mBloco = bloco === "TODOS" || r.ip?.startsWith(bloco + ".");
         return mBusca && mFiltro && mBloco;
       }),
@@ -94,14 +94,15 @@ export default function IPs() {
   const pagAtual = Math.min(pagina, totalPags);
   const slice = filtrados.slice((pagAtual - 1) * PAGE_SIZE, pagAtual * PAGE_SIZE);
 
-  const vagos = useMemo(() => registros.filter((r) => classifyLogin(r.login) === "vago").length, [registros]);
-  const usados = registros.length - vagos;
+  const vagos = useMemo(() => registros.filter((r) => !r.virtual && classifyLogin(r.login) === "vago").length, [registros]);
+  const naoCadastrados = registros.filter((r) => r.virtual).length;
+  const usados = registros.length - vagos - naoCadastrados;
 
   /* ───────── ações ───────── */
   async function salvar(form) {
     const editando = modal?.record;
     try {
-      if (editando) {
+      if (editando && !editando.virtual) {
         const before = data.find((r) => r.id === editando.id) || editando;
         const diff = {};
         ["ip", "login", "data", "obs", ...extras].forEach((k) => {
@@ -165,11 +166,13 @@ export default function IPs() {
 
       <CityTabs cidade={cidade} onSelect={setCidade} />
 
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard icon={Network} label="Total" value={registros.length} color="#38bdf8" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard icon={Network} label="Total listado" value={registros.length} color="#38bdf8" />
         <StatCard icon={CheckCircle2} label="Usados" value={usados} color="#22c55e" />
         <StatCard icon={CircleSlash} label="Vagos" value={vagos} color="#f59e0b" />
+        {naoCadastrados > 0 && <StatCard icon={CircleSlash} label="Não cadastrados" value={naoCadastrados} color="#94a3b8" />}
       </div>
+      {naoCadastrados > 0 && <p className="text-sm text-muted">O bloco 138.99.109.1–254 inclui endereços sem cadastro. Confirme o uso antes de atribuí-los.</p>}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2.5">
@@ -186,6 +189,7 @@ export default function IPs() {
         <Select value={filtro} onChange={(e) => { setFiltro(e.target.value); setPagina(1); }} className="w-auto">
           <option value="TODOS">Todos</option>
           <option value="vago">Vagos</option>
+          {naoCadastrados > 0 && <option value="nao_cadastrado">Não cadastrados</option>}
           <option value="USADO">Usados</option>
           <option value="equip">Equipamentos</option>
           <option value="cgnat">CGNAT</option>
@@ -235,7 +239,7 @@ export default function IPs() {
               </thead>
               <tbody>
                 {slice.map((r, i) => {
-                  const tipo = classifyLogin(r.login);
+                  const tipo = r.virtual ? "nao_cadastrado" : classifyLogin(r.login);
                   return (
                     <tr key={r.id} style={{ background: ROW_TINT[tipo] }}>
                       <td className="text-muted">{(pagAtual - 1) * PAGE_SIZE + i + 1}</td>
@@ -245,15 +249,15 @@ export default function IPs() {
                           <Copy className="h-3 w-3 text-muted opacity-0 transition group-hover:opacity-100" />
                         </button>
                       </td>
-                      <td><Badge tipo={tipo}>{r.login?.trim() ? r.login : "VAGO"}</Badge></td>
+                      <td>{r.virtual ? <span className="text-xs text-muted">Não cadastrado</span> : <Badge tipo={tipo}>{r.login?.trim() ? r.login : "VAGO"}</Badge>}</td>
                       {extras.map((e) => <td key={e} className="text-muted">{r[e] || ""}</td>)}
                       <td className="whitespace-nowrap text-xs text-muted">{r.data}</td>
                       <td className="max-w-[200px] truncate text-xs text-muted" title={r.obs}>{r.obs || ""}</td>
                       <td>
                         <div className="flex justify-end gap-1">
-                          <IconBtn title="Editar" onClick={() => setModal({ type: "form", record: r })} icon={Pencil} />
-                          <IconBtn title="Histórico" onClick={() => setModal({ type: "hist", record: r })} icon={History} />
-                          <IconBtn title="Excluir" onClick={() => excluir(r)} icon={Trash2} danger />
+                          <IconBtn title={r.virtual ? "Cadastrar IP" : "Editar"} onClick={() => setModal({ type: "form", record: r })} icon={Pencil} />
+                          {!r.virtual && <IconBtn title="Histórico" onClick={() => setModal({ type: "hist", record: r })} icon={History} />}
+                          {!r.virtual && <IconBtn title="Excluir" onClick={() => excluir(r)} icon={Trash2} danger />}
                         </div>
                       </td>
                     </tr>
@@ -303,7 +307,7 @@ export default function IPs() {
 
       {/* Modais */}
       {modal?.type === "form" && (
-        <IPFormModal cidade={cidade} initial={modal.record} onClose={() => setModal(null)} onSave={salvar} />
+        <IPFormModal cidade={cidade} initial={modal.record?.virtual ? null : modal.record} seedIP={modal.record?.virtual ? modal.record.ip : ""} onClose={() => setModal(null)} onSave={salvar} />
       )}
       {modal?.type === "bulk" && (
         <BulkImportModal cidade={cidade} onClose={() => setModal(null)} onDone={() => {}} />
