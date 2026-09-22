@@ -1,6 +1,43 @@
 import { collection, doc, getDocs, getDoc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase/config";
 import { colName, isValidIP, normalizeIPRecord, toKey } from "./ip";
+import { parseCIDR, ipText } from "./subnets";
+import { classifyLogin } from "./classify";
+
+export async function setSubnetLogin(cidade, cidr, login, allowReplace = false) {
+  const subnet = parseCIDR(cidr);
+  if (!cidade || !subnet || ![28, 29, 30].includes(subnet.prefix)) throw new Error("Selecione uma sub-rede /28, /29 ou /30.");
+  const value = String(login || "").trim();
+  if (!value) throw new Error("Informe o login do bloco.");
+  return changeCity(cidade, (tx, rows, col) => {
+    const byIP = new Map();
+    for (const row of rows) {
+      const ip = canonical(normalizeIPRecord(row, cidade).ip);
+      if (!byIP.has(ip)) byIP.set(ip, []);
+      byIP.get(ip).push(row);
+    }
+    const plan = [];
+    for (let n = subnet.start; n <= subnet.end; n++) {
+      const ip = ipText(n);
+      const matches = byIP.get(ip) || [];
+      if (matches.length > 1) throw new Error("O IP " + ip + " tem registros duplicados. Corrija a duplicidade antes de alterar o bloco.");
+      const before = matches[0];
+      const currentLogin = before ? normalizeIPRecord(before, cidade).login : "";
+      if (before && currentLogin !== value && classifyLogin(currentLogin) !== "vago" && !allowReplace) {
+        throw new Error("O bloco contém logins existentes. Confira a lista e autorize a substituição.");
+      }
+      if (!before || before.ip !== ip || before.login !== value) plan.push({ ip, before });
+    }
+    for (const { ip, before } of plan) {
+      tx.set(before ? doc(col, before.id) : doc(col), { ip, login: value }, { merge: true });
+      audit(tx, cidade, ip, value === "VAGO" ? "Liberação de bloco " + subnet.cidr : "Login do bloco " + subnet.cidr, {
+        login: { de: before?.login || "", para: value },
+        ...(!before || before.ip !== ip ? { ip: { de: before?.ip || "", para: ip } } : {}),
+      });
+    }
+    return { changed: plan.length > 0, count: plan.length, total: subnet.size };
+  });
+}
 
 // All current app writers share a revision. Retry if records changed while reading
 // the legacy collection, including documents whose IDs are not the IP address.
