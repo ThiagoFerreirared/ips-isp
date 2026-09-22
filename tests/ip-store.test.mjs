@@ -7,6 +7,9 @@ const require=createRequire(import.meta.url);
 const esbuild=createRequire(require.resolve("vite"))("esbuild");
 const ipSource=readFileSync(new URL("../src/lib/ip.js",import.meta.url),"utf8");
 const ip=await import("data:text/javascript;base64,"+Buffer.from(ipSource).toString("base64"));
+const moduleURL=(s)=>"data:text/javascript;base64,"+Buffer.from(s).toString("base64");
+const subnets=await import(moduleURL(readFileSync(new URL("../src/lib/subnets.js",import.meta.url),"utf8").replace('"./ip"',JSON.stringify(moduleURL(ipSource)))));
+const classify=await import(moduleURL(readFileSync(new URL("../src/lib/classify.js",import.meta.url),"utf8")));
 const code=esbuild.transformSync(readFileSync(new URL("../src/lib/ipStore.js",import.meta.url),"utf8"),{format:"cjs"}).code;
 function setup(seed={}) {
   let records=new Map(Object.entries(seed)), counter=0, tail=Promise.resolve(), failBackup=false;
@@ -38,6 +41,8 @@ function setup(seed={}) {
     if(name==="firebase/firestore")return firestore;
     if(name==="../firebase/config")return {db,auth:{currentUser:{email:"test@example.test"}}};
     if(name==="./ip")return ip;
+    if(name==="./subnets")return subnets;
+    if(name==="./classify")return classify;
     throw new Error(name);
   }});
   return {api:mod.exports,records,failBackups:()=>{failBackup=true}};
@@ -74,4 +79,36 @@ test("falha no backup impede a migração",async()=>{
   await assert.rejects(api.migrateManaus(),/permission-denied/);
   assert.equal(records.get("ips_MANAUS/a").ip,"cliente");
   assert.equal([...records.keys()].filter(k=>k.startsWith("historico/")).length,0);
+});
+
+test("atribui todos os IPs /28 /29 /30 e libera preservando os campos",async()=>{
+ for(const [prefix,size] of [[28,16],[29,8],[30,4]]){
+  const {api,records}=setup({"ips_MANAUS/a":{ip:"10.0.0.17",login:"VAGO",obs:"manter",rede:"X"},"ips_MANAUS/out":{ip:"10.0.0.32",login:"vizinho"}});
+  const result=await api.setSubnetLogin("MANAUS","10.0.0.16/"+prefix,"cliente");
+  assert.equal(result.count,size);
+  assert.equal(records.get("ips_MANAUS/a").obs,"manter");
+  assert.equal(records.get("ips_MANAUS/out").login,"vizinho");
+  assert.equal([...records].filter(([k,v])=>k.startsWith("ips_MANAUS/")&&v.login==="cliente").length,size);
+  assert.equal((await api.setSubnetLogin("MANAUS","10.0.0.16/"+prefix,"cliente")).count,0);
+  await api.setSubnetLogin("MANAUS","10.0.0.16/"+prefix,"VAGO",true);
+  assert.equal([...records].filter(([k,v])=>k.startsWith("ips_MANAUS/")&&v.login==="VAGO").length,size);
+  assert.equal(records.get("ips_MANAUS/a").rede,"X");
+  assert.equal([...records.keys()].filter(k=>k.startsWith("historico/")).length,size*2);
+ }
+});
+test("bloco recusa sobrescrita não autorizada, duplicidade e parâmetros inválidos sem alterações",async()=>{
+ const {api,records}=setup({"ips_MANAUS/a":{ip:"10.0.0.18",login:"RESERVADO"}});
+ await assert.rejects(api.setSubnetLogin("MANAUS","10.0.0.16/30","novo"),/logins existentes/);
+ assert.equal(records.size,1);
+ await assert.rejects(api.setSubnetLogin("MANAUS","10.0.0.16/24","novo"),/Selecione/);
+ await assert.rejects(api.setSubnetLogin("MANAUS","10.0.0.16/30"," "),/Informe/);
+ records.set("ips_MANAUS/dup",{ip:"10.0.0.18",login:"duplicado"});
+ await assert.rejects(api.setSubnetLogin("MANAUS","10.0.0.16/30","novo",true),/duplicados/);
+ assert.equal(records.size,2);
+});
+test("atribuições concorrentes não duplicam IPs nem substituem login sem confirmação",async()=>{
+ const {api,records}=setup();
+ const results=await Promise.allSettled([api.setSubnetLogin("MANAUS","10.0.0.0/30","A"),api.setSubnetLogin("MANAUS","10.0.0.0/30","B")]);
+ assert.equal(results.filter(r=>r.status==="fulfilled").length,1);
+ assert.equal([...records.keys()].filter(k=>k.startsWith("ips_MANAUS/")).length,4);
 });

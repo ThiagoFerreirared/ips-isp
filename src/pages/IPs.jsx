@@ -7,6 +7,7 @@ import {
 import { saveIP, deleteIP, migrateManaus } from "../lib/ipStore";
 import { useDocument } from "../hooks/useDocument";
 import { subnetOptions, inSubnet, expandConfiguredBlocks } from "../lib/subnets";
+import SubnetLoginModal from "../components/ip/SubnetLoginModal";
 import BlocksModal from "../components/ip/BlocksModal";
 import { useCities } from "../context/CitiesContext";
 import { useToast } from "../context/ToastContext";
@@ -205,6 +206,8 @@ export default function IPs() {
         </div>
       </div>
 
+      {bloco !== "TODOS" && [28, 29, 30].includes(prefix) && <div className="card flex flex-wrap items-center gap-3 p-3"><span className="flex-1 text-sm">Bloco {bloco} · {2 ** (32 - prefix)} IPs</span><Button size="sm" disabled={loading || blockConfig.loading} onClick={() => setModal({ type: "subnet-login", cidade, cidr: bloco, release: false })}>Aplicar login ao bloco</Button><Button size="sm" variant="soft" disabled={loading || blockConfig.loading} onClick={() => setModal({ type: "subnet-login", cidade, cidr: bloco, release: true })}>Liberar bloco</Button></div>}
+
       {/* Tabela */}
       <Card className="overflow-hidden">
         {loading || blockConfig.loading ? (
@@ -299,6 +302,7 @@ export default function IPs() {
       )}
 
       {/* Modais */}
+      {modal?.type === "subnet-login" && <SubnetLoginModal cidade={modal.cidade} cityName={cidadeLabel(modal.cidade)} cidr={modal.cidr} records={data} release={modal.release} onClose={() => setModal(null)} onDone={() => { setModal(null); setBusca(""); setFiltro("TODOS"); setPagina(1); }} />}
       {modal?.type === "blocks" && <BlocksModal cidade={cidade} blocks={configured} onClose={() => setModal(null)} />}
       {modal?.type === "form" && (
         <IPFormModal cidade={cidade} initial={modal.record?.virtual ? null : modal.record} seedIP={modal.record?.virtual ? modal.record.ip : ""} onClose={() => setModal(null)} onSave={salvar} />
