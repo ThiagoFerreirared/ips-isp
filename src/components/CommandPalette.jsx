@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, getDocs } from "firebase/firestore";
 import {
-  Search, LayoutDashboard, Share2, CalendarClock, Globe, MapPin, CornerDownLeft,
+  Search, LayoutDashboard, Share2, CalendarClock, Globe, MapPin, CornerDownLeft, ClipboardList,
 } from "lucide-react";
 import { db } from "../firebase/config";
 import { useCities } from "../context/CitiesContext";
@@ -12,6 +12,7 @@ import { Badge, Spinner } from "./ui";
 import { cn } from "../lib/cn";
 
 const NAV = [
+  { label: "Ocorrências", to: "/ocorrencias", icon: ClipboardList },
   { label: "Dashboard", to: "/", icon: LayoutDashboard },
   { label: "Relatório de Links", to: "/relatorio", icon: Share2 },
   { label: "Histórico de Eventos", to: "/eventos", icon: CalendarClock },

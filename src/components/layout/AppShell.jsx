@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Globe, Share2, CalendarClock,
+  LayoutDashboard, Globe, Share2, CalendarClock, ClipboardList,
   Search, Sun, Moon, LogOut, Menu, X,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -12,6 +12,7 @@ import CommandPalette from "../CommandPalette";
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/ips", label: "IPs", icon: Globe },
+  { to: "/ocorrencias", label: "Ocorrências", icon: ClipboardList },
   { to: "/relatorio", label: "Relatório de Links", icon: Share2 },
   { to: "/eventos", label: "Histórico de Eventos", icon: CalendarClock },
 ];
