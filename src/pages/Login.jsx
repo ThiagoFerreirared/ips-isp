@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Globe, Sun, Moon, LogIn } from "lucide-react";
+import { Globe, Sun, Moon, LogIn, Radio } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { Button, Input, Field, Spinner } from "../components/ui";
@@ -78,6 +79,10 @@ export default function Login() {
             {loading ? "Entrando…" : "Entrar"}
           </Button>
         </form>
+        <div className="mt-6 border-t border-border pt-5">
+          <Link to="/monitoramento" className="btn btn-soft w-full !py-3"><Radio className="h-4 w-4" />Monitoramento de chamados</Link>
+          <p className="mt-2 text-center text-xs text-muted">Call center · Consulta sem senha · Somente leitura</p>
+        </div>
       </div>
     </div>
   );

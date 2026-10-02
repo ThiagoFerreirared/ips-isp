@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -12,9 +12,13 @@ import IPs from "./pages/IPs";
 import RelatorioLinks from "./pages/RelatorioLinks";
 import HistoricoEventos from "./pages/HistoricoEventos";
 import Ocorrencias from "./pages/Ocorrencias";
+import Monitoramento from "./pages/Monitoramento";
 
 function Root() {
   const { user, loading } = useAuth();
+  const { pathname } = useLocation();
+
+  if (pathname.replace(/\/$/, "") === "/monitoramento") return <Monitoramento />;
 
   if (loading) {
     return (

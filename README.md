@@ -41,7 +41,15 @@ O `vercel.json` já reescreve todas as rotas para `index.html` (SPA).
 
 Ative **Authentication > Sign-in method > Email/Password** e crie um usuário em **Authentication > Users**.
 
-> A configuração do Firebase fica em `src/firebase/config.js`. A `apiKey` do Firebase Web não é secreta — a segurança real depende das **regras do Firestore**. Garanta que as regras exijam usuário autenticado para leitura/escrita.
+> A configuração do Firebase fica em `src/firebase/config.js`. A `apiKey` do Firebase Web não é secreta — a segurança real depende das **regras do Firestore**. O monitoramento permite leitura pública das ocorrências e dos nomes das cidades; escrita e os demais dados exigem autenticação.
+
+### Monitoramento público do call center
+
+- O botão na tela de login abre `/monitoramento`, também acessível diretamente sem senha.
+- A página acompanha as ocorrências em tempo real com filtros de cidade, status e busca. Não monta o painel administrativo nem oferece ações de escrita.
+- As ocorrências (incluindo observações e responsável) são públicas. Evite inserir informações confidenciais nesses campos. O Firestore concede leitura por documento, não por campo.
+- **As regras não são publicadas pelo Vercel.** Publique `firestore.rules` no Console Firebase, projeto `ips-isp`, Firestore Database → Regras, ou use `firebase deploy --only firestore:rules --project ips-isp` em uma sessão administrativa autorizada. Sem essa etapa, ocultar botões não impede gravações pela API.
+- As regras mantêm os operadores autenticados com acesso administrativo, bloqueiam escrita anônima e bloqueiam leitura anônima das demais coleções. Não há criação de contas na interface; contas do Firebase Auth devem ser provisionadas apenas para operadores autorizados.
 
 ### Estrutura no Firestore
 
