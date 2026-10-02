@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, getCountFromServer } from "firebase/firestore";
 import {
   Network, CheckCircle2, CircleSlash, MapPin, Share2, RefreshCw, ArrowRight, CalendarClock,
 } from "lucide-react";
@@ -11,6 +11,8 @@ import { classifyLogin } from "../lib/classify";
 import { colName, normalizeIPRecord } from "../lib/ip";
 import { Card, Button, Loading, EmptyState } from "../components/ui";
 import { Donut, CityBars } from "../components/charts";
+
+import { readCache } from "../lib/readCache";
 
 function statusColor(s) {
   const v = (s || "").toUpperCase();
@@ -36,33 +38,38 @@ function KpiCard({ icon: Icon, label, value, color, to }) {
 
 export default function Dashboard() {
   const { cidades } = useCities();
+  const [details, setDetails] = useState(false);
+  const [error, setError] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const links = useCollection("relatorio_links");
-  const eventos = useCollection("historico_eventos");
+  const eventos = useCollection("historico_eventos", { take: 6 });
 
-  async function load() {
+  async function load(withDetails = false, force = false) {
     if (!cidades.length) return;
     setLoading(true);
-    const result = await Promise.all(
-      cidades.map(async (c) => {
-        try {
-          const col = collection(db, colName(c));
-          const snap = await getDocs(col);
-          const records = snap.docs.map((d) => normalizeIPRecord(d.data(), c));
-          const vagos = records.filter((r) => classifyLogin(r.login) === "vago").length;
-          const reservados = records.filter((r) => classifyLogin(r.login) === "reservado").length;
-          return { cidade: c, total: records.length, vagos, reservados };
-        } catch {
-          return { cidade: c, total: 0, vagos: 0, reservados: 0 };
+    setError("");
+    try {
+      const result = await Promise.all(cidades.map(async (c) => {
+        const col = collection(db, colName(c));
+        if (!withDetails) {
+          const count = await readCache.get("count:" + colName(c), () => getCountFromServer(col), force);
+          return { cidade: c, total: count.data().count, vagos: 0, reservados: 0 };
         }
-      })
-    );
-    setRows(result);
-    setLoading(false);
+        const snap = await readCache.get(colName(c), () => getDocs(col), force);
+        const records = snap.docs.map((d) => normalizeIPRecord(d.data(), c));
+        return { cidade: c, total: records.length,
+          vagos: records.filter((r) => classifyLogin(r.login) === "vago").length,
+          reservados: records.filter((r) => classifyLogin(r.login) === "reservado").length };
+      }));
+      setRows(result);
+      setDetails(withDetails);
+    } catch {
+      setError("Não foi possível atualizar os totais. A cota do Firebase pode estar esgotada. Os últimos dados exibidos foram preservados.");
+    } finally { setLoading(false); }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [cidades]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [JSON.stringify(cidades)]);
 
   const totals = useMemo(() => {
     const total = rows.reduce((a, r) => a + r.total, 0);
@@ -92,16 +99,18 @@ export default function Dashboard() {
           <h1 className="text-xl font-extrabold tracking-tight text-text">Dashboard</h1>
           <p className="text-sm text-muted">Visão geral do endereçamento e da rede</p>
         </div>
-        <Button variant="soft" size="sm" onClick={load} disabled={loading}>
+        <Button variant="soft" size="sm" onClick={() => load(details, true)} disabled={loading}>
           <RefreshCw className={loading ? "animate-spin" : ""} /> Atualizar
         </Button>
       </div>
 
+      {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+      <p className="text-xs text-muted">Totais consultados sob demanda e reutilizados por até 5 minutos. Ocupação detalhada disponível no botão abaixo.</p>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <KpiCard icon={Network} label="Total de IPs" value={loading ? "…" : totals.total} color="#38bdf8" to="/ips" />
-        <KpiCard icon={CheckCircle2} label="Usados" value={loading ? "…" : totals.usados} color="#22c55e" />
-        <KpiCard icon={CircleSlash} label="Vagos" value={loading ? "…" : totals.vagos} color="#f59e0b" />
-        <KpiCard icon={CircleSlash} label="Reservados" value={loading ? "…" : totals.reservados} color="#a78bfa" />
+        <KpiCard icon={CheckCircle2} label="Usados" value={loading ? "…" : details ? totals.usados : "—"} color="#22c55e" />
+        <KpiCard icon={CircleSlash} label="Vagos" value={loading ? "…" : details ? totals.vagos : "—"} color="#f59e0b" />
+        <KpiCard icon={CircleSlash} label="Reservados" value={loading ? "…" : details ? totals.reservados : "—"} color="#a78bfa" />
         <KpiCard icon={MapPin} label="Cidades" value={cidades.length} color="#a78bfa" to="/ips" />
         <KpiCard icon={Share2} label="Links" value={links.loading ? "…" : links.data.length} color="#f472b6" to="/relatorio" />
       </div>
@@ -112,7 +121,7 @@ export default function Dashboard() {
           <h2 className="self-start text-sm font-semibold text-text">Ocupação geral</h2>
           {loading ? (
             <Loading />
-          ) : (
+          ) : !details ? <Button variant="soft" onClick={() => load(true)}>Consultar ocupação detalhada</Button> : (
             <>
               <Donut used={totals.usados} vagos={totals.vagos} reservados={totals.reservados} />
               <div className="flex gap-5 text-sm">
@@ -126,11 +135,11 @@ export default function Dashboard() {
         {/* Barras por cidade */}
         <Card className="p-6 lg:col-span-2">
           <h2 className="mb-4 text-sm font-semibold text-text">IPs por cidade</h2>
-          {loading ? <Loading /> : <CityBars rows={topCidades} />}
+          {loading ? <Loading /> : details ? <CityBars rows={topCidades} /> : <div className="space-y-3">{topCidades.map((row) => <div key={row.cidade} className="flex justify-between"><span>{row.cidade}</span><b>{row.total} IPs</b></div>)}</div>}
         </Card>
       </div>
 
-      {/* Eventos recentes */}
+      {/* Eventos carregados */}
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-text">
@@ -142,7 +151,7 @@ export default function Dashboard() {
         </div>
         {eventos.loading ? (
           <Loading />
-        ) : eventosRecentes.length === 0 ? (
+        ) : eventos.error ? <p role="alert" className="p-4">Não foi possível consultar os eventos.</p> : eventosRecentes.length === 0 ? (
           <EmptyState icon={CalendarClock} title="Sem eventos" desc="Nenhum evento registrado ainda." />
         ) : (
           <div className="divide-y divide-border">

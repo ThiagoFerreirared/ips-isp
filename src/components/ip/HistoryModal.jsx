@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
 import { History } from "lucide-react";
 import { db } from "../../firebase/config";
 import { Modal, Button, Loading, EmptyState } from "../ui";
@@ -7,34 +7,44 @@ import { Modal, Button, Loading, EmptyState } from "../ui";
 const ts = (t) => (t?.toDate ? t.toDate().getTime() : 0);
 
 export default function HistoryModal({ ip, cidade, onClose }) {
+  const [take, setTake] = useState(50);
+  const [error, setError] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [hist, setHist] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
     (async () => {
       try {
         // Filtro só por ip (equality simples → sem índice composto); cidade + ordenação no cliente.
-        const snap = await getDocs(query(collection(db, "historico"), where("ip", "==", ip)));
+        const snap = await getDocs(query(collection(db, "historico"), where("ip", "==", ip), limit(take)));
         const dados = snap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .filter((h) => h.cidade === cidade)
           .sort((a, b) => ts(b.timestamp) - ts(a.timestamp));
+        if (cancelled) return;
+        setHasMore(snap.size === take);
         setHist(dados);
       } catch (e) {
-        console.error(e);
+        if (!cancelled) setError(true);
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     })();
-  }, [ip, cidade]);
+    return () => { cancelled = true; };
+  }, [ip, cidade, take]);
 
   return (
     <Modal
       title={`Histórico — ${ip}`}
       icon={History}
       onClose={onClose}
-      footer={<Button variant="ghost" size="sm" onClick={onClose}>Fechar</Button>}
+      footer={<>{hasMore && <Button disabled={loading} onClick={() => setTake(take + 50)}>Carregar mais 50</Button>}<Button variant="ghost" size="sm" onClick={onClose}>Fechar</Button></>}
     >
-      {loading ? (
+      <p className="mb-3 text-xs text-muted">Exibindo apenas as alterações carregadas. Use Carregar mais para consultar outros registros.</p>
+      {error ? <p role="alert">Não foi possível consultar o histórico. Verifique a cota do Firebase.</p> : loading ? (
         <Loading />
       ) : hist.length === 0 ? (
         <EmptyState icon={History} title="Sem alterações" desc="Nenhuma mudança registrada para este IP." />

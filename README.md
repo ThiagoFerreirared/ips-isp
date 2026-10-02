@@ -81,3 +81,11 @@ src/
 - A correção de Manaus preserva os IDs e salva cada original em **ip_backups**, junto com auditoria em **historico**, na mesma transação da correção. O botão só aparece se houver registros invertidos.
 - Configurações: **config/blocos_<CIDADE>** (blocks) e **config/ip_revision_<CIDADE>** (version).
 - Testes: **npm test**. Os testes de persistência simulam Firestore, incluindo concorrência e falha de backup.
+
+## Economia de leituras
+
+- Dashboard usa contagens agregadas por cidade e cache em memória de cinco minutos. A ocupação detalhada é uma consulta explícita e pode ler todos os IPs. Atualizar força nova consulta.
+- Busca rápida reutiliza consultas completas por cinco minutos. Os resultados podem refletir esse intervalo; a edição continua validando os dados no servidor.
+- Listas compartilham a assinatura durante a navegação e a encerram 60 segundos após o último consumidor sair. Dados não são persistidos em disco; troca de usuário limpa caches.
+- Chamados ativos permanecem em tempo real. Resolvidos são opcionais, inicialmente 50. Históricos também começam com 50. Carregar mais amplia a consulta (pode reler a janela anterior). Filtros, contadores e exportação consideram apenas registros carregados; as janelas usam ordem de ID, sem presumir que sejam os mais recentes.
+- A cota já consumida não é recuperada por essas alterações. Regras do Firestore continuam exigindo publicação administrativa separada conforme seção acima.

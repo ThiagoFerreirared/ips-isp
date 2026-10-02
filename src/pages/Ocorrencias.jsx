@@ -46,7 +46,12 @@ function OccurrenceModal({ initial, onClose, onSave, cities, cityLabel }) {
 }
 
 export default function Ocorrencias() {
-  const { data, loading } = useCollection(COL);
+  const [includeResolved, setIncludeResolved] = useState(false);
+  const [take, setTake] = useState(50);
+  const active = useCollection(COL, { statuses: ["ABERTA", "EM ATENDIMENTO"] });
+  const resolved = useCollection(includeResolved ? COL : null, { statuses: ["RESOLVIDA"], take });
+  const data = [...active.data, ...resolved.data];
+  const loading = active.loading || resolved.loading;
   const { cidades, cidadeLabel } = useCities();
   const { user } = useAuth();
   const toast = useToast();
@@ -83,12 +88,16 @@ export default function Ocorrencias() {
   }
   return <div className="space-y-5 p-4 md:p-6">
     <div><h1 className="text-xl font-extrabold text-text">Controle de ocorrências</h1><p className="text-sm text-muted">Acompanhe falhas por cidade, OLT e CTO até a resolução.</p></div>
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{OCCURRENCE_STATUS.map((s) => <Card key={s} className="p-4"><div className="text-2xl font-bold">{loading ? "…" : data.filter((r) => r.status === s).length}</div><span className={"badge " + COLORS[s]}>{s}</span></Card>)}</div>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{OCCURRENCE_STATUS.map((s) => <Card key={s} className="p-4"><div className="text-2xl font-bold">{loading ? "…" : s === "RESOLVIDA" && !includeResolved ? "—" : data.filter((r) => r.status === s).length}</div><span className={"badge " + COLORS[s]}>{s}</span></Card>)}</div>
+    {(active.error || resolved.error) && <p role="alert" className="text-red-400">Não foi possível atualizar os chamados. Verifique a cota do Firebase.</p>}
+    <p className="text-xs text-muted">Contadores, filtros e exportação consideram os registros carregados. Chamados ativos atualizam em tempo real.</p>
+    <Button variant="soft" onClick={() => setIncludeResolved(!includeResolved)}>{includeResolved ? "Ocultar resolvidas" : "Consultar resolvidas"}</Button>
+    {includeResolved && resolved.data.length >= take && <Button variant="ghost" onClick={() => setTake(take + 50)}>Carregar mais 50 resolvidas</Button>}
     <div className="flex flex-wrap gap-2">
       <Button size="sm" onClick={() => setModal({ id: doc(collection(db, COL)).id, record: null })}><Plus className="h-4 w-4" />Nova ocorrência</Button>
       <Input className="sm:max-w-xs" aria-label="Buscar ocorrências" placeholder="Buscar protocolo, OLT, CTO, motivo…" value={filters.search} onChange={(e) => filter("search", e.target.value)} />
       <Select className="w-auto" aria-label="Filtrar cidade" value={filters.cidade} onChange={(e) => filter("cidade", e.target.value)}><option value="">Todas as cidades</option>{cities.map((c) => <option key={c} value={c}>{cidadeLabel(c)}</option>)}</Select>
-      <Select className="w-auto" aria-label="Filtrar status" value={filters.status} onChange={(e) => filter("status", e.target.value)}><option value="">Todos os status</option>{OCCURRENCE_STATUS.map((s) => <option key={s}>{s}</option>)}</Select>
+      <Select className="w-auto" aria-label="Filtrar status" value={filters.status} onChange={(e) => { if (e.target.value === "RESOLVIDA") setIncludeResolved(true); filter("status", e.target.value); }}><option value="">Todos os status carregados</option>{OCCURRENCE_STATUS.map((s) => <option key={s}>{s}</option>)}</Select>
       <Field label="Abertura de"><Input aria-label="Abertura de" type="date" value={filters.from} onChange={(e) => filter("from", e.target.value)} /></Field>
       <Field label="Até"><Input aria-label="Abertura até" type="date" min={filters.from} value={filters.to} onChange={(e) => filter("to", e.target.value)} /></Field>
       <Button size="sm" variant="ghost" onClick={() => { setFilters({ cidade: "", status: "", search: "", from: "", to: "" }); setPage(1); }}>Limpar filtros</Button>

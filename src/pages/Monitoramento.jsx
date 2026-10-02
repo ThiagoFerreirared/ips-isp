@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, doc, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { Radio, Eye, Moon, Sun } from "lucide-react";
 import { db } from "../firebase/config";
 import { useTheme } from "../context/ThemeContext";
@@ -8,12 +8,14 @@ import { Card, Button, Input, Select, Loading, EmptyState } from "../components/
 import { cidadeLabel as defaultLabel } from "../lib/cities";
 import { OCCURRENCE_STATUS, filterOccurrences, formatOccurrenceDate } from "../lib/occurrences";
 
+import { useCollection } from "../hooks/useCollection";
+
 const COLORS = { ABERTA: "bg-red-500/15 text-red-400", "EM ATENDIMENTO": "bg-amber-500/15 text-amber-400", RESOLVIDA: "bg-emerald-500/15 text-emerald-400" };
 
 // This screen subscribes only to occurrences and city labels; it has no write actions.
 export default function Monitoramento() {
   const { theme, toggle } = useTheme();
-  const [data, setData] = useState([]);
+  const [activeData, setData] = useState([]);
   const [names, setNames] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -22,11 +24,15 @@ export default function Monitoramento() {
   const [attempt, setAttempt] = useState(0);
   const [filters, setFilters] = useState({ cidade: "", status: "", search: "" });
   const [page, setPage] = useState(1);
+  const [includeResolved, setIncludeResolved] = useState(false);
+  const [take, setTake] = useState(50);
+  const resolved = useCollection(includeResolved ? "ocorrencias" : null, { statuses: ["RESOLVIDA"], take });
+  const data = [...activeData, ...resolved.data];
 
   useEffect(() => {
     setLoading(true);
     setError(false);
-    const stop = onSnapshot(collection(db, "ocorrencias"), { includeMetadataChanges: true }, (snapshot) => {
+    const stop = onSnapshot(query(collection(db, "ocorrencias"), where("status", "in", ["ABERTA", "EM ATENDIMENTO"])), { includeMetadataChanges: true }, (snapshot) => {
       setData(snapshot.docs.map((d) => ({ ...d.data(), id: d.id })));
       setCached(snapshot.metadata.fromCache);
       if (!snapshot.metadata.fromCache) setUpdated(new Date());
@@ -54,11 +60,16 @@ export default function Monitoramento() {
       </header>
       <p className="text-xs text-muted" role="status">{error ? "Atualização indisponível." : loading ? "Conectando…" : cached ? "Conectando ao servidor. Os dados disponíveis podem estar desatualizados." : "Atualização automática · Última sincronização: " + updated?.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" }) + " (Brasília)"}</p>
       {error ? <Card className="p-6" role="alert"><p>Não foi possível carregar os chamados. Verifique a conexão e tente novamente.</p><Button className="mt-3" onClick={() => setAttempt((n) => n + 1)}>Tentar novamente</Button></Card> : <>
-        <div className="grid gap-3 sm:grid-cols-3">{OCCURRENCE_STATUS.map((status) => <Card key={status} className="p-4"><p className="mb-1 text-3xl font-bold">{loading ? "…" : data.filter((r) => r.status === status).length}</p><span className={"badge " + COLORS[status]}>{status}</span></Card>)}</div>
+        <div className="grid gap-3 sm:grid-cols-3">{OCCURRENCE_STATUS.map((status) => <Card key={status} className="p-4"><p className="mb-1 text-3xl font-bold">{loading ? "…" : status === "RESOLVIDA" && !includeResolved ? "—" : data.filter((r) => r.status === status).length}</p><span className={"badge " + COLORS[status]}>{status}</span></Card>)}</div>
+        <p className="text-xs text-muted">Chamados ativos em tempo real. Contadores e filtros consideram somente os registros carregados.</p>
+        <Button variant="soft" onClick={() => { setIncludeResolved(!includeResolved); setPage(1); }}>{includeResolved ? "Ocultar resolvidas" : "Consultar resolvidas"}</Button>
+        {resolved.loading && <p role="status">Carregando resolvidas…</p>}
+        {resolved.error && <p role="alert">Não foi possível consultar as resolvidas. Verifique a cota do Firebase.</p>}
+        {includeResolved && resolved.data.length >= take && <Button variant="ghost" onClick={() => setTake(take + 50)}>Carregar mais 50 resolvidas</Button>}
         <div className="flex flex-wrap gap-3">
           <Input className="sm:max-w-sm" aria-label="Buscar chamados" placeholder="Protocolo, OLT, CTO ou motivo…" value={filters.search} onChange={(e) => filter("search", e.target.value)} />
           <Select className="sm:w-auto" aria-label="Filtrar cidade" value={filters.cidade} onChange={(e) => filter("cidade", e.target.value)}><option value="">Todas as cidades</option>{cities.map((city) => <option key={city} value={city}>{label(city)}</option>)}</Select>
-          <Select className="sm:w-auto" aria-label="Filtrar status" value={filters.status} onChange={(e) => filter("status", e.target.value)}><option value="">Todos os status</option>{OCCURRENCE_STATUS.map((status) => <option key={status}>{status}</option>)}</Select>
+          <Select className="sm:w-auto" aria-label="Filtrar status" value={filters.status} onChange={(e) => { if (e.target.value === "RESOLVIDA") setIncludeResolved(true); filter("status", e.target.value); }}><option value="">Todos os status carregados</option>{OCCURRENCE_STATUS.map((status) => <option key={status}>{status}</option>)}</Select>
           <Button variant="ghost" onClick={() => { setFilters({ cidade: "", status: "", search: "" }); setPage(1); }}>Limpar filtros</Button>
         </div>
         {loading ? <Loading label="Carregando chamados…" /> : !rows.length ? <Card><EmptyState icon={Radio} title="Nenhum chamado encontrado" desc={data.length ? "Tente outra busca ou limpe os filtros." : "Nenhuma ocorrência registrada no momento."} /></Card> : <div className="grid gap-4 lg:grid-cols-2">{rows.slice((current - 1) * 30, current * 30).map((r) => <Card key={r.id} className="min-w-0 p-5">

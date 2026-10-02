@@ -22,6 +22,7 @@ export function ToastProvider({ children }) {
 
   const push = useCallback(
     (type, msg, opts = {}) => {
+      if (type === "error" && /quota exceeded|resource-exhausted/i.test(String(msg))) msg = "Cota do Firebase esgotada. O salvamento não foi confirmado. Mantenha o formulário aberto e tente após a renovação da cota.";
       const id = ++counter;
       setToasts((t) => [...t, { id, type, msg }]);
       if (opts.duration !== 0) setTimeout(() => remove(id), opts.duration || 3600);

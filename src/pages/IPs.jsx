@@ -56,7 +56,7 @@ export default function IPs() {
 
   const colKey = cidade ? colName(cidade) : null;
   const extras = extrasFor(cidade);
-  const { data, loading } = useCollection(colKey);
+  const { data, loading, error: readError } = useCollection(colKey);
 
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("TODOS");
@@ -148,6 +148,7 @@ export default function IPs() {
 
   return (
     <div className="space-y-5 p-4 md:p-6">
+      {readError && <p role="alert" className="p-4 text-red-400">Não foi possível atualizar os IPs. Verifique a cota do Firebase; a lista pode estar desatualizada.</p>}
       <div>
         <h1 className="mb-1 text-xl font-extrabold tracking-tight text-text">Gerenciamento de IPs</h1>
         <p className="text-sm text-muted">Endereçamento por cidade · {cidadeLabel(cidade)}</p>
