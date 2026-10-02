@@ -11,6 +11,8 @@ import { classifyLogin } from "../lib/classify";
 import { Badge, Spinner } from "./ui";
 import { cn } from "../lib/cn";
 
+import { readCache } from "../lib/readCache";
+
 const NAV = [
   { label: "Ocorrências", to: "/ocorrencias", icon: ClipboardList },
   { label: "Dashboard", to: "/", icon: LayoutDashboard },
@@ -34,6 +36,7 @@ export default function CommandPalette({ onClose }) {
 
   // Busca global de IPs (debounced)
   useEffect(() => {
+    let cancelled = false;
     clearTimeout(timer.current);
     if (ql.length < 2) {
       setIpResults([]);
@@ -45,7 +48,7 @@ export default function CommandPalette({ onClose }) {
       const found = [];
       for (const cidade of cidades) {
         try {
-          const snap = await getDocs(collection(db, colName(cidade)));
+          const snap = await readCache.get(colName(cidade), () => getDocs(collection(db, colName(cidade))));
           snap.docs.forEach((d) => {
             const r = normalizeIPRecord(d.data(), cidade);
             if (r.ip?.toLowerCase().includes(ql) || r.login?.toLowerCase().includes(ql)) {
@@ -55,10 +58,11 @@ export default function CommandPalette({ onClose }) {
         } catch {}
         if (found.length > 40) break;
       }
+      if (cancelled) return;
       setIpResults(found.slice(0, 30));
       setSearching(false);
     }, 350);
-    return () => clearTimeout(timer.current);
+    return () => { cancelled = true; clearTimeout(timer.current); };
   }, [ql, cidades]);
 
   const navItems = NAV.filter((i) => !ql || i.label.toLowerCase().includes(ql)).map((i) => ({

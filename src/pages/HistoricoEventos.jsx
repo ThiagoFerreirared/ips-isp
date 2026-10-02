@@ -92,7 +92,8 @@ function EventoModal({ initial, onClose, onSave, linksTransporte, linksIP }) {
 
 export default function HistoricoEventos() {
   const toast = useToast();
-  const { data: eventos, loading } = useCollection(COL);
+  const [take, setTake] = useState(50);
+  const { data: eventos, loading, error } = useCollection(COL, { take });
   const { data: links } = useCollection(COL_LINKS);
 
   const [modal, setModal] = useState(null);
@@ -198,6 +199,9 @@ export default function HistoricoEventos() {
         </div>
       </div>
 
+      <p className="text-xs text-muted">Filtros e exportações consideram apenas os {eventos.length} registros carregados (selecionados pela ordem do identificador).</p>
+      {error && <p role="alert">Não foi possível carregar os eventos. Verifique a cota do Firebase.</p>}
+      {eventos.length >= take && <Button onClick={() => setTake(take + 50)}>Carregar mais 50 eventos</Button>}
       <Card className="overflow-hidden">
         {loading ? (
           <Loading />

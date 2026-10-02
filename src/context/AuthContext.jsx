@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { readCache } from "../lib/readCache";
+import { clearCollectionSubscriptions } from "../hooks/useCollection";
 import { auth } from "../firebase/config";
 
 const AuthContext = createContext(null);
@@ -11,6 +13,8 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
+      readCache.clear();
+      clearCollectionSubscriptions();
       setUser(u);
       setLoading(false);
     });
