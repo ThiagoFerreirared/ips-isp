@@ -10,6 +10,8 @@ import { useCollection } from "../hooks/useCollection";
 import { Card, Button, Input, Select, Textarea, Field, Modal, Loading, EmptyState } from "../components/ui";
 import { OCCURRENCE_STATUS, nowLocal, occurrencePayload, formatOccurrenceDate, filterOccurrences } from "../lib/occurrences";
 
+import { BRANCH_KEYS, branchLabel } from "../lib/branches";
+
 const COL = "ocorrencias";
 const COLORS = { ABERTA: "bg-red-500/15 text-red-400", "EM ATENDIMENTO": "bg-amber-500/15 text-amber-400", RESOLVIDA: "bg-emerald-500/15 text-emerald-400" };
 
@@ -30,7 +32,7 @@ function OccurrenceModal({ initial, onClose, onSave, cities, cityLabel }) {
   }
   return <Modal size="lg" title={initial ? "Editar ocorrência" : "Nova ocorrência"} icon={ClipboardList} onClose={() => { if (!saving) onClose(); }} footer={<><Button variant="ghost" disabled={saving} onClick={onClose}>Cancelar</Button><Button type="submit" form="occurrence-form" disabled={saving}>{saving ? "Salvando…" : "Salvar ocorrência"}</Button></>}>
     <form id="occurrence-form" onSubmit={submit}><fieldset disabled={saving} className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-      <Field label="Cidade *"><Select aria-label="Cidade da ocorrência" required value={form.cidade} onChange={(e) => set("cidade", e.target.value)}><option value="">Selecione…</option>{[...new Set([...cities, form.cidade].filter(Boolean))].map((c) => <option key={c} value={c}>{cityLabel(c)}</option>)}</Select></Field>
+      <Field label="Filial WSP Fibra *"><Select aria-label="Filial da ocorrência" required value={form.cidade} onChange={(e) => set("cidade", e.target.value)}><option value="">Selecione…</option>{[...new Set([...cities, form.cidade].filter(Boolean))].map((c) => <option key={c} value={c}>{cityLabel(c)}</option>)}</Select></Field>
       <Field label="Status"><Select aria-label="Status da ocorrência" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value, fim: e.target.value === "RESOLVIDA" ? f.fim || nowLocal() : "" }))}>{OCCURRENCE_STATUS.map((s) => <option key={s}>{s}</option>)}</Select></Field>
       <Field label="OLT / PON"><Textarea aria-label="OLT / PON" rows={3} value={form.olt} onChange={(e) => set("olt", e.target.value)} placeholder={"OLT SANT\nPON 0/3/8"} /></Field>
       <Field label="CTO / Ramal"><Textarea aria-label="CTO / Ramal" rows={3} value={form.cto} onChange={(e) => set("cto", e.target.value)} placeholder={"RAMAL 05\nR900"} /></Field>
@@ -52,7 +54,8 @@ export default function Ocorrencias() {
   const resolved = useCollection(includeResolved ? COL : null, { statuses: ["RESOLVIDA"], take });
   const data = [...active.data, ...resolved.data];
   const loading = active.loading || resolved.loading;
-  const { cidades, cidadeLabel } = useCities();
+  const { cidadeLabel: legacyCityLabel } = useCities();
+  const cidadeLabel = (key) => branchLabel(key) || legacyCityLabel(key);
   const { user } = useAuth();
   const toast = useToast();
   const [modal, setModal] = useState(null);
@@ -63,7 +66,7 @@ export default function Ocorrencias() {
   const rows = filterOccurrences(data, filters, cidadeLabel);
   const pages = Math.max(1, Math.ceil(rows.length / 50));
   const currentPage = Math.min(page, pages);
-  const cities = [...new Set([...cidades, ...data.map((r) => r.cidade)].filter(Boolean))];
+  const cities = [...new Set([...BRANCH_KEYS, ...data.map((r) => r.cidade)].filter(Boolean))];
   async function save(form) {
     const ref = doc(db, COL, modal.id);
     await runTransaction(db, async (tx) => {
@@ -109,6 +112,6 @@ export default function Ocorrencias() {
       <td><div className="flex gap-2"><Button variant="ghost" size="sm" aria-label="Editar ocorrência" onClick={() => setModal({ id: r.id, record: r })}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="sm" aria-label="Excluir ocorrência" disabled={deleting === r.id} onClick={() => remove(r)}><Trash2 className="h-4 w-4 text-red-400" /></Button></div></td>
     </tr>)}</tbody></table></div>}</Card>
     <div className="flex items-center justify-center gap-3 text-sm text-muted"><Button size="sm" variant="ghost" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Anterior</Button><span>{rows.length} ocorrências · página {currentPage} de {pages}</span><Button size="sm" variant="ghost" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>Próxima</Button></div>
-    {modal && <OccurrenceModal initial={modal.record} cities={cities} cityLabel={cidadeLabel} onClose={() => setModal(null)} onSave={save} />}
+    {modal && <OccurrenceModal initial={modal.record} cities={BRANCH_KEYS} cityLabel={cidadeLabel} onClose={() => setModal(null)} onSave={save} />}
   </div>;
 }
