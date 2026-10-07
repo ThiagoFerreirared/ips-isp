@@ -10,6 +10,8 @@ import { OCCURRENCE_STATUS, filterOccurrences, formatOccurrenceDate } from "../l
 
 import { useCollection } from "../hooks/useCollection";
 
+import { BRANCH_KEYS, branchLabel } from "../lib/branches";
+
 const COLORS = { ABERTA: "bg-red-500/15 text-red-400", "EM ATENDIMENTO": "bg-amber-500/15 text-amber-400", RESOLVIDA: "bg-emerald-500/15 text-emerald-400" };
 
 // This screen subscribes only to occurrences and city labels; it has no write actions.
@@ -45,8 +47,8 @@ export default function Monitoramento() {
     return () => { stop(); stopNames(); };
   }, [attempt]);
 
-  const label = (city) => names[city] || defaultLabel(city);
-  const cities = [...new Set(data.map((r) => r.cidade).filter(Boolean))].sort((a, b) => label(a).localeCompare(label(b), "pt-BR"));
+  const label = (city) => branchLabel(city) || names[city] || defaultLabel(city);
+  const cities = [...new Set([...BRANCH_KEYS, ...data.map((r) => r.cidade).filter(Boolean)])].sort((a, b) => label(a).localeCompare(label(b), "pt-BR"));
   const rows = filterOccurrences(data, filters, label);
   const pages = Math.max(1, Math.ceil(rows.length / 30));
   const current = Math.min(page, pages);
