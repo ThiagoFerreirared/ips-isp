@@ -28,7 +28,7 @@ export default function Login() {
   return (
     <div className="relative flex min-h-full items-center justify-center overflow-hidden bg-bg p-4">
       {/* glow de fundo */}
-      <div className="pointer-events-none absolute -top-40 left-1/2 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-primary/20 blur-[120px]" />
+      <div className="hidden" />
 
       <button
         onClick={toggle}

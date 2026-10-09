@@ -17,7 +17,7 @@ export function ThemeProvider({ children }) {
     root.classList.toggle("dark", theme === "dark");
     localStorage.setItem("theme", theme);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "dark" ? "#0a0f1e" : "#f1f5f9");
+    if (meta) meta.setAttribute("content", theme === "dark" ? "#1e2031" : "#f1f5f9");
   }, [theme]);
 
   const toggle = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
