@@ -15,6 +15,8 @@ import HistoricoEventos from "./pages/HistoricoEventos";
 import Ocorrencias from "./pages/Ocorrencias";
 import Monitoramento from "./pages/Monitoramento";
 
+import Ferramentas from "./pages/Ferramentas";
+
 function Root() {
   const { user, loading } = useAuth();
   const { pathname } = useLocation();
@@ -38,6 +40,7 @@ function Root() {
           <Route index element={<Dashboard />} />
           <Route path="ips" element={<IPs />} />
           <Route path="relatorio" element={<RelatorioLinks />} />
+          <Route path="ferramentas" element={<Ferramentas />} />
           <Route path="eventos" element={<HistoricoEventos />} />
           <Route path="ocorrencias" element={<Ocorrencias />} />
           <Route path="*" element={<Navigate to="/" replace />} />

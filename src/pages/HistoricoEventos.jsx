@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, runTransaction } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -9,6 +9,8 @@ import { useCollection } from "../hooks/useCollection";
 import { useToast } from "../context/ToastContext";
 import { Card, Button, Input, Select, Field, Modal, Loading, EmptyState } from "../components/ui";
 import { cn } from "../lib/cn";
+
+import { eventOutages, eventPayload, outageColumn } from "../lib/eventOutages";
 
 const COL = "historico_eventos";
 const COL_LINKS = "relatorio_links";
@@ -28,6 +30,10 @@ function EventoModal({ initial, onClose, onSave, linksTransporte, linksIP }) {
   const [form, setForm] = useState(
     initial || { data: "", status: "DEGRADAÇÃO", protocolo: "", tipo_link: "", operadora: "", hora_inicio: "", hora_termino: "", evento: "" }
   );
+  const [quedas, setQuedas] = useState(() => eventOutages(initial || {}));
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+  const setQueda = (index, key, value) => setQuedas(rows => rows.map((row,i) => i === index ? {...row,[key]:value} : row));
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const opcoes = form.tipo_link === "TRANSPORTE" ? linksTransporte : form.tipo_link === "IP" ? linksIP : [];
 
@@ -36,25 +42,29 @@ function EventoModal({ initial, onClose, onSave, linksTransporte, linksIP }) {
     setForm((f) => ({ ...f, tipo_link: v, operadora: novas.includes(f.operadora) ? f.operadora : "" }));
   }
 
-  function submit() {
+  async function submit() {
+    if (saving) return;
     const operadora = form.operadora === "__outro__" ? (form.operadora_custom || "").trim() : form.operadora;
-    onSave({ ...form, operadora });
+    try {
+      const payload = eventPayload({ ...form, operadora, quedas });
+      setSaving(true); await onSave(payload);
+    } catch(error) { toast.error(error.message); } finally { setSaving(false); }
   }
 
   return (
     <Modal
       title={initial ? "Editar evento" : "Novo evento"}
       icon={CalendarClock}
-      onClose={onClose}
+      onClose={() => { if (!saving) onClose(); }}
       footer={
         <>
-          <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" onClick={submit}>Salvar</Button>
+          <Button variant="ghost" size="sm" disabled={saving} onClick={onClose}>Cancelar</Button>
+          <Button size="sm" disabled={saving} onClick={submit}>{saving ? "Salvando…" : "Salvar"}</Button>
         </>
       }
     >
-      <div className="grid grid-cols-2 gap-3.5">
-        <Field label="Data"><Input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></Field>
+      <fieldset disabled={saving} className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+        <Field label="Data da primeira queda"><Input type="date" value={quedas[0].data_inicio} onChange={(e) => { setQueda(0,"data_inicio",e.target.value); if (!quedas[0].data_termino) setQueda(0,"data_termino",e.target.value); }} /></Field>
         <Field label="Status">
           <Select value={form.status} onChange={(e) => set("status", e.target.value)}>
             {STATUS_OPTS.map((s) => <option key={s}>{s}</option>)}
@@ -73,7 +83,7 @@ function EventoModal({ initial, onClose, onSave, linksTransporte, linksIP }) {
           <Field label="Operadora" className="col-span-2">
             <Select value={form.operadora} onChange={(e) => set("operadora", e.target.value)}>
               <option value="">Selecione a operadora…</option>
-              {opcoes.map((o) => <option key={o} value={o}>{o}</option>)}
+              {[...new Set([...opcoes, form.operadora].filter(o=>o && o!=="__outro__"))].map((o) => <option key={o} value={o}>{o}</option>)}
               <option value="__outro__">➕ Outra (digitar)</option>
             </Select>
             {form.operadora === "__outro__" && (
@@ -82,10 +92,9 @@ function EventoModal({ initial, onClose, onSave, linksTransporte, linksIP }) {
           </Field>
         )}
 
-        <Field label="Hora de início"><Input type="time" value={form.hora_inicio} onChange={(e) => set("hora_inicio", e.target.value)} /></Field>
-        <Field label="Hora de término"><Input type="time" value={form.hora_termino} onChange={(e) => set("hora_termino", e.target.value)} /></Field>
+        <div className="col-span-full space-y-3">{quedas.map((q,i) => <div key={i} className="rounded-xl border border-border p-3 space-y-3"><div className="flex justify-between"><b>Queda {i+1}</b>{i>0 && <Button variant="ghost" size="sm" onClick={() => setQuedas(rows => rows.filter((_,n)=>n!==i))}>Remover queda {i+1}</Button>}</div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{i>0 && <Field label="Data de início"><Input type="date" value={q.data_inicio} onChange={e=>setQueda(i,"data_inicio",e.target.value)} /></Field>}<Field label="Hora de início"><Input type="time" value={q.hora_inicio} onChange={e=>setQueda(i,"hora_inicio",e.target.value)} /></Field><Field label="Data de término"><Input type="date" value={q.data_termino} min={q.data_inicio} onChange={e=>setQueda(i,"data_termino",e.target.value)} /></Field><Field label="Hora de término"><Input type="time" value={q.hora_termino} onChange={e=>setQueda(i,"hora_termino",e.target.value)} /></Field></div><p className="text-xs text-muted">Deixe o horário de término vazio enquanto a queda estiver em aberto.</p></div>)}<Button variant="soft" onClick={() => setQuedas(rows => [...rows,{data_inicio:rows[0].data_inicio,hora_inicio:"",data_termino:rows[0].data_inicio,hora_termino:""}])}><Plus className="h-4 w-4" />Adicionar queda</Button></div>
         <Field label="Evento" className="col-span-2"><Input value={form.evento} onChange={(e) => set("evento", e.target.value)} /></Field>
-      </div>
+      </fieldset>
     </Modal>
   );
 }
@@ -127,7 +136,12 @@ export default function HistoricoEventos() {
     if (!form.data) return toast.error("Informe a data.");
     const { operadora_custom, ...payload } = form;
     try {
-      if (modal?.record) await updateDoc(doc(db, COL, modal.record.id), payload);
+      if (modal?.record) await runTransaction(db, async tx => {
+        const ref = doc(db, COL, modal.record.id); const current = await tx.get(ref);
+        if (!current.exists()) throw Error("Este evento foi removido. Reabra a lista.");
+        if (current.data().updatedAt?.toMillis?.() !== modal.record.updatedAt?.toMillis?.()) throw Error("Outra pessoa alterou o evento. Feche e abra novamente antes de salvar.");
+        tx.update(ref, {...payload, updatedAt:serverTimestamp()});
+      });
       else await addDoc(collection(db, COL), { ...payload, timestamp: serverTimestamp() });
       toast.success("Evento salvo.");
       setModal(null);
@@ -147,7 +161,7 @@ export default function HistoricoEventos() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
       ["DATA", "STATUS", "TIPO LINK", "PROTOCOLO", "OPERADORA", "HORA INÍCIO", "HORA TÉRMINO", "EVENTO"],
-      ...filtrados.map((e) => [fmtDate(e.data), e.status, e.tipo_link || "", e.protocolo, e.operadora, e.hora_inicio, e.hora_termino, e.evento]),
+      ...filtrados.map((e) => [fmtDate(e.data), e.status, e.tipo_link || "", e.protocolo, e.operadora, outageColumn(e,"inicio"), outageColumn(e,"termino"), e.evento]),
     ]), "Histórico");
     XLSX.writeFile(wb, "historico_eventos.xlsx");
   }
@@ -158,7 +172,7 @@ export default function HistoricoEventos() {
     autoTable(pdf, {
       startY: 20,
       head: [["DATA", "STATUS", "TIPO", "PROTOCOLO", "OPERADORA", "INÍCIO", "TÉRMINO", "EVENTO"]],
-      body: filtrados.map((e) => [fmtDate(e.data), e.status, e.tipo_link || "", e.protocolo, e.operadora, e.hora_inicio, e.hora_termino, e.evento]),
+      body: filtrados.map((e) => [fmtDate(e.data), e.status, e.tipo_link || "", e.protocolo, e.operadora, outageColumn(e,"inicio"), outageColumn(e,"termino"), e.evento]),
       styles: { fontSize: 8 },
       didParseCell: (d) => {
         if (d.section === "body" && d.column.index === 1) {
@@ -231,8 +245,8 @@ export default function HistoricoEventos() {
                     </td>
                     <td className="text-muted">{e.protocolo}</td>
                     <td className="font-medium text-text-soft">{e.operadora}</td>
-                    <td className="text-muted">{e.hora_inicio}</td>
-                    <td className="text-muted">{e.hora_termino}</td>
+                    <td className="whitespace-pre-line text-muted">{outageColumn(e,"inicio")}</td>
+                    <td className="whitespace-pre-line text-muted">{outageColumn(e,"termino")}</td>
                     <td className="max-w-[220px] truncate text-muted" title={e.evento}>{e.evento}</td>
                     <td>
                       <div className="flex justify-end gap-1">
