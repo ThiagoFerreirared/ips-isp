@@ -89,3 +89,10 @@ src/
 - Listas compartilham a assinatura durante a navegação e a encerram 60 segundos após o último consumidor sair. Dados não são persistidos em disco; troca de usuário limpa caches.
 - Chamados ativos permanecem em tempo real. Resolvidos são opcionais, inicialmente 50. Históricos também começam com 50. Carregar mais amplia a consulta (pode reler a janela anterior). Filtros, contadores e exportação consideram apenas registros carregados; as janelas usam ordem de ID, sem presumir que sejam os mais recentes.
 - A cota já consumida não é recuperada por essas alterações. Regras do Firestore continuam exigindo publicação administrativa separada conforme seção acima.
+
+## Central Operacional e quedas de eventos
+
+- `/ferramentas` aparece no menu autenticado. Integra o HTML operacional enviado pelo usuário; relatórios e preferências ficam neste navegador, sem sincronização no Firestore.
+- A base original de 7.500 senhas NÃO está no repositório nem no build. Para consultar Nokia, carregar o HTML original ou JSON de pares serial/senha no seletor local; a base fica somente em memória. O anexo bloqueia conexões de rede por CSP.
+- Histórico de Eventos admite várias quedas por evento, com datas e horas independentes. Quedas em aberto não têm término. Tabela, Excel e PDF mostram todos os períodos.
+- Registros antigos sem array quedas são interpretados como uma queda. Se o horário de término antigo for anterior ao de início, o formulário sugere o dia seguinte; conferir a data antes de salvar.

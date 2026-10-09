@@ -14,6 +14,7 @@ const NAV = [
   { to: "/ips", label: "IPs", icon: Globe },
   { to: "/ocorrencias", label: "Ocorrências", icon: ClipboardList },
   { to: "/relatorio", label: "Relatório de Links", icon: Share2 },
+  { to: "/ferramentas", label: "Central Operacional", icon: ClipboardList },
   { to: "/eventos", label: "Histórico de Eventos", icon: CalendarClock },
 ];
 

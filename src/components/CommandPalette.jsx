@@ -14,6 +14,7 @@ import { cn } from "../lib/cn";
 import { readCache } from "../lib/readCache";
 
 const NAV = [
+  { label: "Central Operacional", to: "/ferramentas", icon: ClipboardList },
   { label: "Ocorrências", to: "/ocorrencias", icon: ClipboardList },
   { label: "Dashboard", to: "/", icon: LayoutDashboard },
   { label: "Relatório de Links", to: "/relatorio", icon: Share2 },
