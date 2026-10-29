@@ -1942,15 +1942,15 @@
           <div class="tool-card-box">
             <div class="pane-heading">
               <span>4. SENHAS NOKIA (PESQUISA DE SENHA POR SERIAL)</span>
-              <span style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Base local · carregar arquivo para consultar</span>
+              <span style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Base privada · acesso autorizado</span>
             </div>
 
-            <div class="nokya-wrapper"><label class="sn-label" for="localNokiaFile">Carregar base local (HTML original ou JSON de pares serial/senha)</label><input id="localNokiaFile" type="file" accept=".html,.json" onchange="loadLocalNokia(this)"><p class="sn-subtitle">O arquivo fica apenas na memória deste navegador. Carregue novamente ao sair desta página. Nenhuma senha é enviada ao servidor.</p>
+            <div class="nokya-wrapper">
               <p class="sn-subtitle">Digite o Serial completo (ex.: <strong>ALCLFE07B0FC</strong> ou <strong>SALCLFE0830FF</strong>) ou apenas o final do Serial para localizar a senha <strong>sec-key-ont</strong>.</p>
 
               <label class="sn-label" for="inputSerialNokya">Serial da ONT Nokia</label>
               <div class="nokya-search-bar">
-                <input id="inputSerialNokya" class="nokya-input" type="text" value="ALCLFE0" placeholder="ALCLFE0..." oninput="pesquisarNokya(false)">
+                <input id="inputSerialNokya" class="nokya-input" type="text" placeholder="Serial completo ou trecho (mínimo 4 caracteres)" autocomplete="off" oninput="pesquisarNokya(false)">
                 <button class="nokya-btn-search" type="button" onclick="pesquisarNokya(true)">Pesquisar</button>
                 <button class="nokya-btn-clear" type="button" onclick="limparNokya()">Limpar</button>
               </div>
@@ -1959,7 +1959,7 @@
               <div id="nokyaMainResult" class="nokya-result-card">
                 <div class="nokya-meta-row">
                   <span>Serial Encontrado: <strong id="nokyaResSerial">-</strong></span>
-                  <span>Código: <strong id="nokyaResCodigo">3TN00456BD</strong></span>
+                  <span>Código: <strong id="nokyaResCodigo">-</strong></span>
                 </div>
                 <div class="nokya-key-box">
                   <div>
@@ -1974,7 +1974,7 @@
 
               <!-- Status ou Lista de Múltiplos Resultados -->
               <div id="nokyaStatus" class="nokya-status-msg">
-                Complete o restante do Serial após <strong>ALCLFE0</strong> (ex.: <strong>7B0FC</strong>) para consultar a senha.
+                Digite pelo menos 4 caracteres do serial para consultar automaticamente.
               </div>
               <div id="nokyaList" class="nokya-list-container"></div>
             </div>
@@ -2024,11 +2024,6 @@
   </div>
 
   <script>
-    /* =========================================================
-       BASE DE DADOS INTEGRADA: SENHAS NOKYA (7.500 REGISTROS)
-       ========================================================= */
-    let NOKYA_DB = [];
-
     /* =========================================================
        1. NAVEGAÇÃO ENTRE AS 4 FERRAMENTAS E SUB-ABAS DO RELATÓRIO
        ========================================================= */
@@ -2677,113 +2672,80 @@
     /* =========================================================
        4. LÓGICA DE PESQUISA: SENHAS NOKYA (POR SERIAL)
        ========================================================= */
-    async function loadLocalNokia(input) {
-      try {
-        const file = input.files[0]; if (!file) return;
-        if (file.size > 5000000) throw new Error('Arquivo muito grande. Limite: 5 MB.');
-        const text = await file.text();
-        const match = text.match(/const NOKYA_DB = (\[.*?\]);/s);
-        const data = JSON.parse(match ? match[1] : text);
-        if (!Array.isArray(data) || data.length > 20000 || !data.every(r => Array.isArray(r) && r.length === 2 && /^[A-Z0-9]+$/.test(r[0]) && typeof r[1] === 'string' && /^[A-Za-z0-9!@#$%&*()_+=.?-]{1,128}$/.test(r[1]))) throw new Error('Base inválida.');
-        NOKYA_DB = data;
-        limparNokya(); toast(data.length + ' registros carregados localmente.');
-      } catch (error) { toast(error.message || 'Não foi possível carregar.'); }
-      finally { input.value = ''; }
+    let nokiaRequest = 0;
+    let nokiaTimer;
+    let nokiaTimeout;
+    const nokiaOrigin = window.parent.location.origin;
+    function resetNokiaResults(message) {
+      document.getElementById('nokyaMainResult').classList.remove('visible');
+      document.getElementById('nokyaResKey').textContent = '-';
+      document.getElementById('nokyaResSerial').textContent = '-';
+      document.getElementById('nokyaList').replaceChildren();
+      const status = document.getElementById('nokyaStatus');
+      status.style.display = 'block';
+      status.textContent = message;
     }
-    function normalizarSerialNokya(s) {
-      // Remove prefixo S antes de ALCL para comparar tanto SALCL... quanto ALCL...
-      if (s.startsWith("SALCL")) return s.substring(1);
-      return s;
-    }
-
     function pesquisarNokya(isButton) {
-      if (!NOKYA_DB.length) { if (isButton) toast("Carregue a base local primeiro."); return; }
-      const inputEl = document.getElementById("inputSerialNokya");
-      if (!inputEl.value.toUpperCase().startsWith("ALCLFE0") && !inputEl.value.toUpperCase().startsWith("SALCLFE0")) {
-        // Garante que o prefixo ALCLFE0 permaneça fixo caso seja apagado acidentalmente
-        const sufixoLimpo = inputEl.value.replace(/^S?ALCLFE0?/i, "");
-        inputEl.value = "ALCLFE0" + sufixoLimpo.toUpperCase();
-      }
-      const q = inputEl.value.trim().toUpperCase();
-      const mainCard = document.getElementById("nokyaMainResult");
-      const statusBox = document.getElementById("nokyaStatus");
-      const listContainer = document.getElementById("nokyaList");
-
-      mainCard.classList.remove("visible");
-      listContainer.innerHTML = "";
-
-      if (q === "ALCLFE0" || q.length <= 7) {
-        statusBox.style.display = "block";
-        statusBox.innerHTML = "Complete o restante do Serial após <strong>ALCLFE0</strong> (ex.: <strong>7B0FC</strong>) para consultar a senha.";
-        if (isButton) toast("Complete o restante do Serial após ALCLFE0.");
-        return;
-      }
-
-      const qNorm = normalizarSerialNokya(q);
-      const exactMatches = [];
-      const partialMatches = [];
-
-      for (let i = 0; i < NOKYA_DB.length; i++) {
-        const rec = NOKYA_DB[i];
-        const s = rec[0];
-        const pass = rec[1];
-        const sNorm = normalizarSerialNokya(s);
-
-        if (s === q || sNorm === qNorm) {
-          exactMatches.push({ serial: s, pass: pass });
-        } else if (s.includes(q) || sNorm.includes(qNorm)) {
-          if (partialMatches.length < 50) {
-            partialMatches.push({ serial: s, pass: pass });
+      clearTimeout(nokiaTimer);
+      clearTimeout(nokiaTimeout);
+      const id = ++nokiaRequest;
+      const query = document.getElementById('inputSerialNokya').value.trim().toUpperCase();
+      resetNokiaResults('Digite pelo menos 4 letras ou números do serial.');
+      if (!/^[A-Z0-9]{4,32}$/.test(query)) return;
+      nokiaTimer = setTimeout(() => {
+        resetNokiaResults('Consultando base privada…');
+        window.parent.postMessage({ type: 'nokia-search', id, query }, nokiaOrigin);
+        nokiaTimeout = setTimeout(() => {
+          if (id === nokiaRequest) {
+            ++nokiaRequest;
+            resetNokiaResults('A consulta demorou demais. Tente novamente.');
           }
-        }
-      }
-
-      const results = exactMatches.length > 0 ? exactMatches : partialMatches;
-
-      if (results.length === 0) {
-        statusBox.style.display = "block";
-        statusBox.innerText = `Nenhum serial encontrado para "${q}".`;
-        if (isButton) toast("Serial não encontrado na base.");
-        return;
-      }
-
-      // Exibe o primeiro ou exato no card de destaque
-      const topHit = results[0];
-      document.getElementById("nokyaResSerial").innerText = topHit.serial;
-      document.getElementById("nokyaResKey").innerText = topHit.pass;
-      mainCard.classList.add("visible");
-
-      if (results.length === 1) {
-        statusBox.style.display = "none";
-        if (isButton) toast("Senha localizada!");
-      } else {
-        statusBox.style.display = "block";
-        statusBox.innerText = `${results.length} seriais compatíveis encontrados (mostrando lista abaixo):`;
-        results.forEach(item => {
-          const row = document.createElement("div");
-          row.className = "nokya-list-item";
-          row.innerHTML = `
-            <div class="nokya-list-info">
-              <span class="nokya-list-serial">Serial: ${item.serial} <span style="font-weight:400; font-size:12px; color:var(--text-muted);">(3TN00456BD)</span></span>
-              <span class="nokya-list-pass">${item.pass}</span>
-            </div>
-            <button class="btn-pwd" type="button" onclick="copiarTextoNokya('${item.pass}')">Copiar</button>
-          `;
-          listContainer.appendChild(row);
-        });
-      }
+        }, 20000);
+      }, isButton ? 0 : 350);
     }
-
+    window.addEventListener('message', event => {
+      if (event.source !== window.parent || event.origin !== nokiaOrigin) return;
+      const data = event.data || {};
+      if (data.type !== 'nokia-results' || data.id !== nokiaRequest) return;
+      clearTimeout(nokiaTimeout);
+      resetNokiaResults(data.error || 'Nenhum serial encontrado.');
+      if (data.error || !Array.isArray(data.results) || !data.results.length) return;
+      const first = data.results[0];
+      document.getElementById('nokyaResSerial').textContent = first.serial;
+      document.getElementById('nokyaResKey').textContent = first.password;
+      document.getElementById('nokyaResCodigo').textContent = first.code || '-';
+      document.getElementById('nokyaMainResult').classList.add('visible');
+      const status = document.getElementById('nokyaStatus');
+      status.textContent = data.truncated ? 'Mostrando 20 resultados. Digite mais caracteres para refinar.' : `${data.results.length} resultado(s) encontrado(s).`;
+      const list = document.getElementById('nokyaList');
+      data.results.slice(1).forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'nokya-list-item';
+        const info = document.createElement('div');
+        info.className = 'nokya-list-info';
+        const serial = document.createElement('span');
+        serial.className = 'nokya-list-serial';
+        serial.textContent = item.serial;
+        const password = document.createElement('span');
+        password.className = 'nokya-list-pass';
+        password.textContent = item.password;
+        const button = document.createElement('button');
+        button.className = 'btn-pwd';
+        button.textContent = 'Copiar';
+        button.onclick = () => copiarTextoNokya(item.password);
+        info.append(serial, password);
+        row.append(info, button);
+        list.append(row);
+      });
+    });
     function limparNokya() {
-      const inputEl = document.getElementById("inputSerialNokya");
-      inputEl.value = "ALCLFE0";
-      document.getElementById("nokyaMainResult").classList.remove("visible");
-      document.getElementById("nokyaList").innerHTML = "";
-      const statusBox = document.getElementById("nokyaStatus");
-      statusBox.style.display = "block";
-      statusBox.innerHTML = "Complete o restante do Serial após <strong>ALCLFE0</strong> (ex.: <strong>7B0FC</strong>) para consultar a senha.";
-      inputEl.focus();
-      inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+      clearTimeout(nokiaTimer);
+      clearTimeout(nokiaTimeout);
+      ++nokiaRequest;
+      const input = document.getElementById('inputSerialNokya');
+      input.value = '';
+      resetNokiaResults('Digite pelo menos 4 caracteres do serial para consultar automaticamente.');
+      input.focus();
     }
 
     async function copiarTextoNokya(texto) {
