@@ -2,3 +2,11 @@ node_modules/
 dist/
 *.log
 .DS_Store
+*.xlsx
+*.xls
+.env*
+private/
+*service-account*.json
+*serviceAccount*.json
+functions/node_modules/
+pnpm-lock.yaml
